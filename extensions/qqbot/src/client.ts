@@ -2,6 +2,7 @@ import { httpGet, httpPost, type HttpRequestOptions } from "@openclaw-china/shar
 
 const API_BASE = "https://api.sgroup.qq.com";
 const TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken";
+const MSG_SEQ_BASE = 1000000;
 
 type TokenCache = {
   token: string;
