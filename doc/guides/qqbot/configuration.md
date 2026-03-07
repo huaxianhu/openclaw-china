@@ -55,7 +55,7 @@
 
 **点击二维码，扫描后可直接进入QQ机器人对话窗口。**
 
-![image-20260228224035048](D:\work\code\moltbot-china\doc\images\image-20260228224035048.png)
+![image-20260228224035048](../../images/image-20260228224035048.png)
 
 
 

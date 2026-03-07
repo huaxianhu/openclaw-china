@@ -9,7 +9,8 @@
   <a href="#功能支持">功能支持</a> •
   <a href="#更新日志">更新日志</a> •
   <a href="#演示">演示</a> •
-  <a href="#-支持我">支持我</a> •
+  <a href="#💗 支持我们
+">💗 支持我们</a> •
   <a href="#加入交流群"><strong>加入交流群</strong></a>
 </p>
 <p align="center">
@@ -92,6 +93,15 @@
 
 <details>
 <summary><strong>点击展开更新日志</strong></summary>
+
+
+### 2026-03-07
+
+- Merge PR #127：进一步修复心跳 ACK 上报逻辑，避免通道在无用户消息期间被错误判定为失活。
+- `qqbot` 新增长任务通知能力，支持配置延迟时间，提升长耗时任务场景下的交互反馈。
+- `qqbot` 支持文件上传与文件名参数，并优化媒体发送链路，补强相关测试覆盖。
+- `dingtalk` 新增长任务通知，并将非 AI 回复切换为直接分发，减少回复链路复杂度。
+- 文档补充腾讯云 ASR 仅支持国内网络环境的使用提示。
 
 ### 2026-03-05
 
@@ -560,25 +570,13 @@ flowchart TD
 
 </details>
 
-## 💗 支持我
+## 💗 支持我们
 
-这是一个公益项目，感谢支持。本项目由我利用休息时间开发维护，未来会持续更新与支持。当前不接受捐助；如希望支持作者，可以去小店支持一下：<a href="https://api.clawmater.vip/">https://api.clawmater.vip/</a>
+这是一个公益项目，感谢支持。项目由我们利用业余时间持续开发和维护，后续也会继续更新迭代并提供支持。
 
-<table>
-  <tr>
-    <td width="220" align="center" valign="middle">
-      <strong>作者项目</strong><br />
-      <a href="https://api.clawmater.vip/">GPT 服务站</a>
-    </td>
-    <td valign="top">
-      在 OpenClaw 中实现 ChatGPT 模型随心用。<br />
-      ✅ 无需梯子，国内免翻访问<br />
-      ✅ 后台大量官方账号池，随心使用<br />
-      ✅ 支持 OpenAI 最新所有模型<br />
-      地址：<a href="https://api.clawmater.vip/">https://api.clawmater.vip/</a>
-    </td>
-  </tr>
-</table>
+如果你愿意支持这个项目，**欢迎帮忙宣传**，并点亮项目**右上角的 Star**。
+
+![Star openclaw-china](./doc/images/openclaw-china-star.gif)
 
 
 ## 加入交流群
