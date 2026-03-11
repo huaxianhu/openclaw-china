@@ -49,6 +49,7 @@ function resolveQQBotAccount(params: {
     configured,
     appId: credentials?.appId,
     markdownSupport: merged.markdownSupport ?? true,
+    c2cMarkdownDeliveryMode: merged.c2cMarkdownDeliveryMode ?? "proactive-table-only",
   };
 }
 
@@ -146,6 +147,10 @@ export const qqbotPlugin = {
           },
         },
         markdownSupport: { type: "boolean" },
+        c2cMarkdownDeliveryMode: {
+          type: "string",
+          enum: ["passive", "proactive-table-only", "proactive-all"],
+        },
         dmPolicy: { type: "string", enum: ["open", "pairing", "allowlist"] },
         groupPolicy: { type: "string", enum: ["open", "allowlist", "disabled"] },
         requireMention: { type: "boolean" },
@@ -187,6 +192,10 @@ export const qqbotPlugin = {
                 },
               },
               markdownSupport: { type: "boolean" },
+              c2cMarkdownDeliveryMode: {
+                type: "string",
+                enum: ["passive", "proactive-table-only", "proactive-all"],
+              },
               dmPolicy: { type: "string", enum: ["open", "pairing", "allowlist"] },
               groupPolicy: { type: "string", enum: ["open", "allowlist", "disabled"] },
               requireMention: { type: "boolean" },

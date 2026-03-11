@@ -49,6 +49,10 @@ const plugin = {
         }
       },
       markdownSupport: { type: "boolean" },
+      c2cMarkdownDeliveryMode: {
+        type: "string",
+        enum: ["passive", "proactive-table-only", "proactive-all"],
+      },
       dmPolicy: { type: "string", enum: ["open", "pairing", "allowlist"] },
       groupPolicy: { type: "string", enum: ["open", "allowlist", "disabled"] },
       requireMention: { type: "boolean" },
@@ -87,9 +91,13 @@ const plugin = {
                 appId: { type: ["string", "number"] },
                 secretId: { type: "string" },
                 secretKey: { type: "string" }
-              }
+            }
             },
             markdownSupport: { type: "boolean" },
+            c2cMarkdownDeliveryMode: {
+              type: "string",
+              enum: ["passive", "proactive-table-only", "proactive-all"],
+            },
             dmPolicy: { type: "string", enum: ["open", "pairing", "allowlist"] },
             groupPolicy: { type: "string", enum: ["open", "allowlist", "disabled"] },
             requireMention: { type: "boolean" },

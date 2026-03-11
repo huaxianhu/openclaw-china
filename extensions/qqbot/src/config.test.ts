@@ -16,6 +16,7 @@ describe("QQBotConfigSchema", () => {
     expect(cfg.maxFileSizeMB).toBe(100);
     expect(cfg.mediaTimeoutMs).toBe(30000);
     expect(cfg.markdownSupport).toBe(true);
+    expect(cfg.c2cMarkdownDeliveryMode).toBe("proactive-table-only");
     expect(cfg.longTaskNoticeDelayMs).toBe(30000);
     expect(resolveQQBotAutoSendLocalPathMedia(cfg)).toBe(true);
     expect(resolveInboundMediaDir(cfg)).toBe(join(homedir(), ".openclaw", "media", "qqbot", "inbound"));
@@ -26,6 +27,7 @@ describe("QQBotConfigSchema", () => {
     expect(() => QQBotConfigSchema.parse({ maxFileSizeMB: 0 })).toThrow();
     expect(() => QQBotConfigSchema.parse({ mediaTimeoutMs: 0 })).toThrow();
     expect(() => QQBotConfigSchema.parse({ longTaskNoticeDelayMs: -1 })).toThrow();
+    expect(() => QQBotConfigSchema.parse({ c2cMarkdownDeliveryMode: "invalid" })).toThrow();
   });
 
   it("resolves custom inbound media settings", () => {

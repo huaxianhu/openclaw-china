@@ -1,4 +1,11 @@
-export type { QQBotConfig, QQBotAccountConfig, PluginConfig } from "./config.js";
+import type { QQBotC2CMarkdownDeliveryMode } from "./config.js";
+
+export type {
+  QQBotConfig,
+  QQBotAccountConfig,
+  PluginConfig,
+  QQBotC2CMarkdownDeliveryMode,
+} from "./config.js";
 
 export interface ResolvedQQBotAccount {
   accountId: string;
@@ -6,6 +13,7 @@ export interface ResolvedQQBotAccount {
   configured: boolean;
   appId?: string;
   markdownSupport?: boolean;
+  c2cMarkdownDeliveryMode?: QQBotC2CMarkdownDeliveryMode;
 }
 
 export interface QQBotSendResult {

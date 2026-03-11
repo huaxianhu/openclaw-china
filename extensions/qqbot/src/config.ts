@@ -13,6 +13,13 @@ const optionalCoercedString = z.preprocess(
   z.string().min(1).optional()
 );
 
+export const QQBotC2CMarkdownDeliveryModeSchema = z
+  .enum(["passive", "proactive-table-only", "proactive-all"])
+  .optional()
+  .default("proactive-table-only");
+
+export type QQBotC2CMarkdownDeliveryMode = z.input<typeof QQBotC2CMarkdownDeliveryModeSchema>;
+
 // ── Account-level Schema ──────────────────────────────────────────────────────
 
 const QQBotAccountSchema = z.object({
@@ -29,6 +36,7 @@ const QQBotAccountSchema = z.object({
     })
     .optional(),
   markdownSupport: z.boolean().optional().default(true),
+  c2cMarkdownDeliveryMode: QQBotC2CMarkdownDeliveryModeSchema,
   dmPolicy: z.enum(["open", "pairing", "allowlist"]).optional().default("open"),
   groupPolicy: z.enum(["open", "allowlist", "disabled"]).optional().default("open"),
   requireMention: z.boolean().optional().default(true),

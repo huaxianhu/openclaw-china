@@ -119,6 +119,7 @@ describe("resolveQQBotTextReplyRefs", () => {
       to: "user:u-1",
       text: "| col1 | col2 |\n| --- | --- |\n| a | b |",
       markdownSupport: true,
+      c2cMarkdownDeliveryMode: "proactive-table-only",
       replyToId: "reply-1",
       replyEventId: "event-1",
     });
@@ -135,6 +136,7 @@ describe("resolveQQBotTextReplyRefs", () => {
       to: "user:u-1",
       text: "普通文本回复",
       markdownSupport: true,
+      c2cMarkdownDeliveryMode: "proactive-all",
       replyToId: "reply-2",
       replyEventId: "event-2",
     });
@@ -151,6 +153,7 @@ describe("resolveQQBotTextReplyRefs", () => {
       to: "group:g-1",
       text: "| col1 | col2 |\n| --- | --- |\n| a | b |",
       markdownSupport: true,
+      c2cMarkdownDeliveryMode: "proactive-all",
       replyToId: "reply-3",
       replyEventId: "event-3",
     });
@@ -167,6 +170,7 @@ describe("resolveQQBotTextReplyRefs", () => {
       to: "user:u-1",
       text: "# 普通文本回复",
       markdownSupport: false,
+      c2cMarkdownDeliveryMode: "proactive-all",
       replyToId: "reply-4",
       replyEventId: "event-4",
     });
@@ -175,6 +179,40 @@ describe("resolveQQBotTextReplyRefs", () => {
       forceProactive: false,
       replyToId: "reply-4",
       replyEventId: "event-4",
+    });
+  });
+
+  it("keeps passive reply refs for c2c text when mode is passive", () => {
+    const refs = resolveQQBotTextReplyRefs({
+      to: "user:u-1",
+      text: "# 标题\n\n普通文本回复",
+      markdownSupport: true,
+      c2cMarkdownDeliveryMode: "passive",
+      replyToId: "reply-5",
+      replyEventId: "event-5",
+    });
+
+    expect(refs).toEqual({
+      forceProactive: false,
+      replyToId: "reply-5",
+      replyEventId: "event-5",
+    });
+  });
+
+  it("keeps passive reply refs for non-table c2c text when mode is proactive-table-only", () => {
+    const refs = resolveQQBotTextReplyRefs({
+      to: "user:u-1",
+      text: "# 标题\n\n普通文本回复",
+      markdownSupport: true,
+      c2cMarkdownDeliveryMode: "proactive-table-only",
+      replyToId: "reply-6",
+      replyEventId: "event-6",
+    });
+
+    expect(refs).toEqual({
+      forceProactive: false,
+      replyToId: "reply-6",
+      replyEventId: "event-6",
     });
   });
 });

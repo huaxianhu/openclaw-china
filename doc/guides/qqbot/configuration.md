@@ -124,6 +124,7 @@ openclaw config set channels.qqbot.groupPolicy open
 openclaw config set channels.qqbot.requireMention true
 openclaw config set channels.qqbot.textChunkLimit 1500
 openclaw config set channels.qqbot.replyFinalOnly false
+openclaw config set channels.qqbot.c2cMarkdownDeliveryMode proactive-table-only
 openclaw config set channels.qqbot.autoSendLocalPathMedia true
 openclaw config set channels.qqbot.longTaskNoticeDelayMs 30000
 openclaw config set gateway.http.endpoints.chatCompletions.enabled true
@@ -143,8 +144,23 @@ openclaw config set gateway.http.endpoints.chatCompletions.enabled true
 | groupAllowFrom | string[] | [] | 群聊白名单 |
 | textChunkLimit | number | 1500 | 文本分块长度 |
 | replyFinalOnly | boolean | false | 是否仅发送最终回复文本（不会阻断媒体工具结果，如 TTS 语音） |
+| c2cMarkdownDeliveryMode | string | "proactive-table-only" | 私聊 C2C Markdown 发送策略：`passive` 保持被动回复，`proactive-table-only` 仅表格走主动消息，`proactive-all` 让所有私聊 Markdown 文本都走主动消息 |
 | autoSendLocalPathMedia | boolean | true | 是否自动把回复文本中的本地图片路径识别为媒体并发送；设为 `false` 时，类似 `/root/.openclaw/media/qqbot/inbound/...jpeg` 的路径会保留在文本里，适合展示“证据 / 文件路径：...” |
 | longTaskNoticeDelayMs | number | 30000 | 首条正式回复超过该时长仍未发送时，自动补发“任务处理时间较长，请稍等，我还在继续处理。”；设为 `0` 可关闭 |
+
+### 3.1 私聊 Markdown 渲染策略
+
+如需通过配置控制 QQ 私聊的 Markdown 发送方式，可以设置：
+
+```bash
+openclaw config set channels.qqbot.c2cMarkdownDeliveryMode proactive-all
+```
+
+可选值：
+
+- `passive`：保持普通被动回复，不强制走主动消息
+- `proactive-table-only`：只有 Markdown 表格会改走主动消息
+- `proactive-all`：所有 C2C Markdown 文本统一在回复结束后走主动消息，适合兼容标题、引用、分割线等渲染问题
 
 ### 3. 常见场景：保留证据路径为文本
 

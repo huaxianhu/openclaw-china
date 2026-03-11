@@ -27,6 +27,7 @@ import {
   resolveQQBotAutoSendLocalPathMedia,
   mergeQQBotAccountConfig,
   DEFAULT_ACCOUNT_ID,
+  type QQBotC2CMarkdownDeliveryMode,
   type QQBotAccountConfig,
   type PluginConfig,
 } from "./config.js";
@@ -820,6 +821,7 @@ export function resolveQQBotTextReplyRefs(params: {
   to: string;
   text: string;
   markdownSupport: boolean;
+  c2cMarkdownDeliveryMode?: QQBotC2CMarkdownDeliveryMode;
   replyToId?: string;
   replyEventId?: string;
 }): {
@@ -827,7 +829,12 @@ export function resolveQQBotTextReplyRefs(params: {
   replyToId?: string;
   replyEventId?: string;
 } {
-  const forceProactive = params.markdownSupport && isQQBotC2CTarget(params.to);
+  const mode = params.c2cMarkdownDeliveryMode ?? "proactive-table-only";
+  const forceProactive =
+    params.markdownSupport &&
+    isQQBotC2CTarget(params.to) &&
+    (mode === "proactive-all" ||
+      (mode === "proactive-table-only" && hasQQBotMarkdownTable(params.text)));
 
   if (!forceProactive) {
     return {
@@ -1235,6 +1242,7 @@ async function dispatchToAgent(params: {
 
     const replyFinalOnly = qqCfg.replyFinalOnly ?? false;
     const markdownSupport = qqCfg.markdownSupport ?? true;
+    const c2cMarkdownDeliveryMode = qqCfg.c2cMarkdownDeliveryMode ?? "proactive-table-only";
     let bufferingProactiveMarkdownReply = false;
     let bufferedProactiveMarkdownTexts: string[] = [];
 
@@ -1315,6 +1323,7 @@ async function dispatchToAgent(params: {
           to: target.to,
           text: converted,
           markdownSupport,
+          c2cMarkdownDeliveryMode,
           replyToId: inbound.messageId,
           replyEventId: inbound.eventId,
         });
