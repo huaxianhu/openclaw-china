@@ -845,6 +845,27 @@ export function resolveQQBotTextReplyRefs(params: {
   };
 }
 
+export function appendQQBotBufferedText(bufferedTexts: string[], nextText: string): string[] {
+  const normalized = nextText.trim();
+  if (!normalized) return bufferedTexts;
+  if (bufferedTexts.length === 0) return [normalized];
+
+  const currentCombined = bufferedTexts.join("\n\n");
+  if (currentCombined === normalized || currentCombined.includes(normalized)) {
+    return bufferedTexts;
+  }
+  if (normalized.includes(currentCombined)) {
+    return [normalized];
+  }
+
+  const last = bufferedTexts[bufferedTexts.length - 1];
+  if (last === normalized) {
+    return bufferedTexts;
+  }
+
+  return [...bufferedTexts, normalized];
+}
+
 export async function sendQQBotMediaWithFallback(params: {
   qqCfg: QQBotAccountConfig;
   to: string;
@@ -1179,6 +1200,33 @@ async function dispatchToAgent(params: {
 
     const replyFinalOnly = qqCfg.replyFinalOnly ?? false;
     const markdownSupport = qqCfg.markdownSupport ?? true;
+    let bufferingProactiveTableReply = false;
+    let bufferedProactiveTableTexts: string[] = [];
+
+    const flushBufferedProactiveTableReply = async (): Promise<void> => {
+      if (!bufferingProactiveTableReply || bufferedProactiveTableTexts.length === 0) {
+        bufferingProactiveTableReply = false;
+        bufferedProactiveTableTexts = [];
+        return;
+      }
+
+      const combinedText = bufferedProactiveTableTexts.join("\n\n").trim();
+      bufferingProactiveTableReply = false;
+      bufferedProactiveTableTexts = [];
+      if (!combinedText) return;
+
+      const result = await qqbotOutbound.sendText({
+        cfg: { channels: { qqbot: qqCfg } },
+        to: target.to,
+        text: combinedText,
+      });
+      if (result.error) {
+        logger.error(`send buffered proactive table reply failed: ${result.error}`);
+        markGroupMessageInterfaceBlocked(result.error);
+      } else {
+        markReplyDelivered();
+      }
+    };
 
     const deliver = async (payload: unknown, info?: { kind?: string }): Promise<void> => {
       const typed = payload as { text?: string; mediaUrl?: string; mediaUrls?: string[] } | undefined;
@@ -1233,23 +1281,30 @@ async function dispatchToAgent(params: {
           replyToId: inbound.messageId,
           replyEventId: inbound.eventId,
         });
-        if (textReplyRefs.forceProactive) {
-          logger.info("C2C markdown table detected; sending proactive QQ message to preserve table rendering");
-        }
-        const chunks = chunkText(converted);
-        for (const chunk of chunks) {
-          const result = await qqbotOutbound.sendText({
-            cfg: { channels: { qqbot: qqCfg } },
-            to: target.to,
-            text: chunk,
-            replyToId: textReplyRefs.replyToId,
-            replyEventId: textReplyRefs.replyEventId,
-          });
-          if (result.error) {
-            logger.error(`sendText failed: ${result.error}`);
-            markGroupMessageInterfaceBlocked(result.error);
-          } else {
-            markReplyDelivered();
+        const shouldBufferProactiveTableReply =
+          bufferingProactiveTableReply || textReplyRefs.forceProactive;
+        if (shouldBufferProactiveTableReply) {
+          if (!bufferingProactiveTableReply) {
+            logger.info("C2C markdown table detected; buffering final proactive QQ message to preserve table rendering");
+          }
+          bufferingProactiveTableReply = true;
+          bufferedProactiveTableTexts = appendQQBotBufferedText(bufferedProactiveTableTexts, converted);
+        } else {
+          const chunks = chunkText(converted);
+          for (const chunk of chunks) {
+            const result = await qqbotOutbound.sendText({
+              cfg: { channels: { qqbot: qqCfg } },
+              to: target.to,
+              text: chunk,
+              replyToId: textReplyRefs.replyToId,
+              replyEventId: textReplyRefs.replyEventId,
+            });
+            if (result.error) {
+              logger.error(`sendText failed: ${result.error}`);
+              markGroupMessageInterfaceBlocked(result.error);
+            } else {
+              markReplyDelivered();
+            }
           }
         }
       }
@@ -1289,6 +1344,7 @@ async function dispatchToAgent(params: {
           },
         },
       });
+      await flushBufferedProactiveTableReply();
     } else {
       const dispatcherResult = replyApi.createReplyDispatcherWithTyping
         ? replyApi.createReplyDispatcherWithTyping({
@@ -1323,6 +1379,7 @@ async function dispatchToAgent(params: {
       });
 
       dispatcherResult.markDispatchIdle?.();
+      await flushBufferedProactiveTableReply();
     }
 
     const noReplyFallback = resolveQQBotNoReplyFallback({

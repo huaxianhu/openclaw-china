@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Logger } from "@openclaw-china/shared";
 import {
+  appendQQBotBufferedText,
   evaluateReplyFinalOnlyDelivery,
   hasQQBotMarkdownTable,
   isQQBotGroupMessageInterfaceBlocked,
@@ -169,6 +170,23 @@ describe("hasQQBotMarkdownTable", () => {
   it("ignores bullet lists and plain text", () => {
     expect(hasQQBotMarkdownTable("- item 1\n- item 2")).toBe(false);
     expect(hasQQBotMarkdownTable("普通文本")).toBe(false);
+  });
+});
+
+describe("appendQQBotBufferedText", () => {
+  it("appends distinct buffered segments", () => {
+    const buffered = appendQQBotBufferedText(["第一段"], "第二段");
+    expect(buffered).toEqual(["第一段", "第二段"]);
+  });
+
+  it("collapses cumulative updates into the latest payload", () => {
+    const buffered = appendQQBotBufferedText(["第一段"], "第一段\n\n第二段");
+    expect(buffered).toEqual(["第一段\n\n第二段"]);
+  });
+
+  it("ignores repeated excerpts already covered by buffered text", () => {
+    const buffered = appendQQBotBufferedText(["第一段\n\n第二段"], "第二段");
+    expect(buffered).toEqual(["第一段\n\n第二段"]);
   });
 });
 
