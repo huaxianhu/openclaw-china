@@ -48,9 +48,8 @@ export type WecomAppAccountConfig = {
 
   /**
    * 语音发送转码策略（可选）
-   * enabled=true 时：当检测到 wav/mp3 等不支持的语音格式，
-   * - 若系统存在 ffmpeg：自动转码为 amr 再以 voice 发送
-   * - 若无 ffmpeg：降级为 file 发送
+   * 默认会对非 amr/speex 的音频自动转码为 amr；
+   * enabled=false 时可显式关闭转码，并对不兼容格式回退为 file 发送。
    */
   voiceTranscode?: {
     enabled?: boolean;

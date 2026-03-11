@@ -9,9 +9,11 @@ import {
   resolveInboundMediaKeepDays,
   resolveApiBaseUrl,
 } from "./config.js";
-import { mkdir, writeFile, unlink, rename, copyFile, readdir, stat } from "node:fs/promises";
+import { mkdir, writeFile, unlink, rename, copyFile, readdir, stat, mkdtemp, readFile, rm } from "node:fs/promises";
 import { basename, join, extname } from "node:path";
 import { tmpdir } from "node:os";
+import { hasFfmpeg, transcodeToAmr } from "./ffmpeg.js";
+import { resolveWecomVoiceSourceExtension, shouldTranscodeWecomVoice } from "./voice.js";
 
 /** 下载超时时间（毫秒） */
 const DOWNLOAD_TIMEOUT = 120_000;
@@ -884,6 +886,11 @@ const VOICE_MIME_TYPE_MAP: Record<string, string> = {
   '.speex': 'audio/speex',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/x-m4a',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.wma': 'audio/x-ms-wma',
 } as const;
 
 /**
@@ -1008,12 +1015,43 @@ export async function sendWecomAppVoiceMessage(
 /**
  * 下载语音文件（支持网络 URL 和本地文件路径）
  * @param voiceUrl 语音 URL 或本地文件路径
- * @returns 语音 Buffer
+ * @returns 语音 Buffer 与来源文件名
  */
-export async function downloadVoice(voiceUrl: string): Promise<{ buffer: Buffer; contentType?: string }> {
-  // 判断是网络 URL 还是本地路径
-  if (voiceUrl.startsWith('http://') || voiceUrl.startsWith('https://')) {
-    // 网络下载
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function resolveVoiceSourceName(voiceUrl: string): string {
+  if (isHttpUrl(voiceUrl)) {
+    try {
+      const pathname = new URL(voiceUrl).pathname;
+      return basename(pathname) || "voice";
+    } catch {
+      return "voice";
+    }
+  }
+
+  return basename(voiceUrl) || "voice";
+}
+
+type DownloadVoiceResult = {
+  buffer: Buffer;
+  contentType?: string;
+  sourceName: string;
+};
+
+type PreparedVoiceUpload = {
+  buffer: Buffer;
+  filename: string;
+  contentType?: string;
+  transcoded: boolean;
+  cleanup: () => Promise<void>;
+};
+
+export async function downloadVoice(voiceUrl: string): Promise<DownloadVoiceResult> {
+  const sourceName = resolveVoiceSourceName(voiceUrl);
+
+  if (isHttpUrl(voiceUrl)) {
     console.log(`[wecom-app] 使用 HTTP fetch 下载语音: ${voiceUrl}`);
     const resp = await fetch(voiceUrl);
     if (!resp.ok) {
@@ -1023,16 +1061,81 @@ export async function downloadVoice(voiceUrl: string): Promise<{ buffer: Buffer;
     return {
       buffer: Buffer.from(arrayBuffer),
       contentType: resp.headers.get('content-type') || undefined,
+      sourceName,
     };
   } else {
-    // 本地文件读取
     console.log(`[wecom-app] 使用 fs 读取本地语音文件: ${voiceUrl}`);
     const fs = await import('fs');
     const buffer = await fs.promises.readFile(voiceUrl);
     return {
       buffer,
-      contentType: undefined, // 本地文件不提供 Content-Type，依赖扩展名推断
+      contentType: undefined,
+      sourceName,
     };
+  }
+}
+
+async function cleanupVoiceTempDir(dirPath: string): Promise<void> {
+  try {
+    await rm(dirPath, { recursive: true, force: true });
+  } catch {
+    // ignore temp cleanup failures
+  }
+}
+
+async function prepareVoiceUpload(params: {
+  voiceUrl: string;
+  contentType?: string;
+  transcode?: boolean;
+}): Promise<PreparedVoiceUpload> {
+  const requestedContentType = params.contentType;
+  const shouldTranscode = params.transcode !== false && shouldTranscodeWecomVoice(params.voiceUrl, requestedContentType);
+
+  if (!shouldTranscode) {
+    const voice = await downloadVoice(params.voiceUrl);
+    const effectiveContentType = voice.contentType ?? requestedContentType;
+    const sourceName = voice.sourceName || params.voiceUrl;
+    const extension = resolveWecomVoiceSourceExtension(sourceName, effectiveContentType);
+    return {
+      buffer: voice.buffer,
+      filename: `voice${extension}`,
+      contentType: effectiveContentType,
+      transcoded: false,
+      cleanup: async () => {},
+    };
+  }
+
+  const canTranscode = await hasFfmpeg();
+  if (!canTranscode) {
+    throw new Error("ffmpeg is unavailable for voice transcode");
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), "wecom-app-voice-"));
+  const outputPath = join(tempDir, "voice.amr");
+
+  try {
+    if (isHttpUrl(params.voiceUrl)) {
+      const voice = await downloadVoice(params.voiceUrl);
+      const effectiveContentType = voice.contentType ?? requestedContentType;
+      const extension = resolveWecomVoiceSourceExtension(voice.sourceName || params.voiceUrl, effectiveContentType);
+      const inputPath = join(tempDir, `input${extension}`);
+      await writeFile(inputPath, voice.buffer);
+      await transcodeToAmr({ inputPath, outputPath });
+    } else {
+      await transcodeToAmr({ inputPath: params.voiceUrl, outputPath });
+    }
+
+    const buffer = await readFile(outputPath);
+    return {
+      buffer,
+      filename: "voice.amr",
+      contentType: "audio/amr",
+      transcoded: true,
+      cleanup: async () => cleanupVoiceTempDir(tempDir),
+    };
+  } catch (err) {
+    await cleanupVoiceTempDir(tempDir);
+    throw err;
   }
 }
 
@@ -1045,47 +1148,50 @@ export async function downloadVoice(voiceUrl: string): Promise<{ buffer: Buffer;
 export async function downloadAndSendVoice(
   account: ResolvedWecomAppAccount,
   target: WecomAppSendTarget,
-  voiceUrl: string
+  voiceUrl: string,
+  options?: {
+    contentType?: string;
+    transcode?: boolean;
+  }
 ): Promise<SendMessageResult> {
+  const requestedContentType = options?.contentType;
+  const transcodeRequested = options?.transcode !== false;
+  const transcodeExpected = transcodeRequested && shouldTranscodeWecomVoice(voiceUrl, requestedContentType);
+
   try {
     console.log(`[wecom-app] Downloading voice from: ${voiceUrl}`);
 
-    // 企业微信语音消息通常要求 AMR/Speex 等格式。
-    // WAV 往往会导致上传/发送失败（ok=false）。这里提前做提示，方便用户定位。
-    const voiceExt = (voiceUrl.split("?")[0].match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
-    if (voiceExt === "wav") {
-      console.warn(`[wecom-app] Voice format is .wav; WeCom usually expects .amr/.speex. Consider converting to .amr before sending.`);
+    const prepared = await prepareVoiceUpload({
+      voiceUrl,
+      contentType: requestedContentType,
+      transcode: transcodeRequested,
+    });
+
+    try {
+      console.log(
+        `[wecom-app] Voice prepared, size: ${prepared.buffer.length} bytes, contentType: ${prepared.contentType || "unknown"}, transcoded=${prepared.transcoded}`
+      );
+
+      console.log(`[wecom-app] Uploading voice to WeCom media API, filename: ${prepared.filename}`);
+      const mediaId = await uploadVoiceMedia(account, prepared.buffer, prepared.filename, prepared.contentType);
+      console.log(`[wecom-app] Voice uploaded, media_id: ${mediaId}`);
+
+      console.log(`[wecom-app] Sending voice to target:`, target);
+      const result = await sendWecomAppVoiceMessage(account, target, mediaId);
+      console.log(
+        `[wecom-app] Voice sent, ok: ${result.ok}, msgid: ${result.msgid}, errcode: ${result.errcode}, errmsg: ${result.errmsg}`
+      );
+
+      return result;
+    } finally {
+      await prepared.cleanup();
     }
-
-    // 1. 下载语音
-    const { buffer: voiceBuffer, contentType } = await downloadVoice(voiceUrl);
-    console.log(`[wecom-app] Voice downloaded, size: ${voiceBuffer.length} bytes, contentType: ${contentType || 'unknown'}`);
-
-    // 2. 提取文件扩展名
-    const extMatch = voiceUrl.match(/\.([^.]+)$/);
-    const ext = extMatch ? `.${extMatch[1]}` : '.amr';
-    const filename = `voice${ext}`;
-
-    // 3. 上传获取 media_id
-    console.log(`[wecom-app] Uploading voice to WeCom media API, filename: ${filename}`);
-    const mediaId = await uploadVoiceMedia(account, voiceBuffer, filename, contentType);
-    console.log(`[wecom-app] Voice uploaded, media_id: ${mediaId}`);
-
-    // 4. 发送语音消息
-    console.log(`[wecom-app] Sending voice to target:`, target);
-    const result = await sendWecomAppVoiceMessage(account, target, mediaId);
-    console.log(`[wecom-app] Voice sent, ok: ${result.ok}, msgid: ${result.msgid}, errcode: ${result.errcode}, errmsg: ${result.errmsg}`);
-
-    return result;
   } catch (err) {
     console.error(`[wecom-app] downloadAndSendVoice error:`, err);
 
     const rawMsg = err instanceof Error ? err.message : String(err);
-    const voiceExt = (voiceUrl.split("?")[0].match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
-
-    // 给用户更可操作的提示：wav 常见不兼容
-    const hint = voiceExt === "wav"
-      ? "WeCom voice usually requires .amr/.speex. Your file is .wav; please convert to .amr and retry. (e.g., ffmpeg -i in.wav -ar 8000 -ac 1 -c:a amr_nb out.amr)"
+    const hint = transcodeExpected
+      ? "WeCom voice requires .amr/.speex. The plugin tried to transcode this audio to .amr before sending, but the transcode/upload step failed."
       : "";
 
     return {

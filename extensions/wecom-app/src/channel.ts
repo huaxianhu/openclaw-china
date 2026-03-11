@@ -17,7 +17,7 @@ import {
 import { registerWecomAppWebhookTarget } from "./monitor.js";
 import { setWecomAppRuntime } from "./runtime.js";
 import { sendWecomAppMessage, stripMarkdown, downloadAndSendImage, downloadAndSendVoice, downloadAndSendFile, downloadAndSendVideo } from "./api.js";
-import { hasFfmpeg, transcodeToAmr } from "./ffmpeg.js";
+import { isWecomAudioMimeType, isWecomAudioSource, shouldTranscodeWecomVoice } from "./voice.js";
 
 /**
  * 媒体类型
@@ -96,12 +96,8 @@ function detectMediaType(filePath: string, mimeType?: string): MediaType {
     if (mime.startsWith("image/")) {
       return "image";
     }
-    // audio/wav：企业微信语音类型通常不支持，降级为文件发送更稳
-    if (mime === "audio/wav" || mime === "audio/x-wav") {
-      return "file";
-    }
 
-    if (mime.startsWith("audio/") || mime === "audio/amr") {
+    if (isWecomAudioMimeType(mime)) {
       return "voice";
     }
 
@@ -127,15 +123,8 @@ function detectMediaType(filePath: string, mimeType?: string): MediaType {
     return "file";
   }
 
-  // 语音扩展名
-  const voiceExts = ["amr", "speex", "mp3"];
-  if (voiceExts.includes(ext)) {
+  if (isWecomAudioSource(filePath)) {
     return "voice";
-  }
-
-  // wav：企业微信通常不支持作为 voice，按 file 发送更稳
-  if (ext === "wav") {
-    return "file";
   }
 
   // 视频扩展名 - 只支持mp4
@@ -546,54 +535,40 @@ export const wecomAppPlugin = {
           console.log(`[wecom-app] Routing to downloadAndSendImage`);
           result = await downloadAndSendImage(account, target, params.mediaUrl);
         } else if (mediaType === "voice") {
-          // 语音: 下载 → 上传素材 → 发送
-          // 策略：遇到 wav/mp3 这类企业微信 voice 不支持的格式时：
-          // - voiceTranscode.enabled=true 且系统存在 ffmpeg：自动转码为 amr 后再发送 voice
-          // - 否则：降级为 file 发送（保证可达）
+          // 语音: 下载 → （必要时转码为 amr）→ 上传素材 → 发送
           console.log(`[wecom-app] Routing to downloadAndSendVoice`);
 
           const voiceUrl = params.mediaUrl;
-          const ext = (voiceUrl.split("?")[0].match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
-          const likelyUnsupported = ext === "wav" || ext === "mp3";
-          const transcodeEnabled = Boolean(account.config.voiceTranscode?.enabled);
+          const transcodeEnabled = account.config.voiceTranscode?.enabled !== false;
+          const transcodeNeeded = shouldTranscodeWecomVoice(voiceUrl, params.mimeType);
 
-          if (likelyUnsupported && transcodeEnabled) {
-            const can = await hasFfmpeg();
-            if (can) {
-              try {
-                if (!voiceUrl.startsWith("http://") && !voiceUrl.startsWith("https://")) {
-                  const os = await import("node:os");
-                  const path = await import("node:path");
-                  const fs = await import("node:fs");
-                  const out = path.join(os.tmpdir(), `wecom-app-voice-${Date.now()}.amr`);
-
-                  console.log(`[wecom-app] voiceTranscode: ffmpeg available, transcoding ${voiceUrl} -> ${out}`);
-                  await transcodeToAmr({ inputPath: voiceUrl, outputPath: out });
-
-                  result = await downloadAndSendVoice(account, target, out);
-
-                  try {
-                    await fs.promises.unlink(out);
-                  } catch {
-                    // ignore
-                  }
-                } else {
-                  console.warn(`[wecom-app] voiceTranscode enabled but mediaUrl is remote; fallback to file send (download once is not implemented yet)`);
-                  result = await downloadAndSendFile(account, target, voiceUrl);
-                }
-              } catch (e) {
-                console.warn(`[wecom-app] voiceTranscode failed; fallback to file send:`, e);
-                result = await downloadAndSendFile(account, target, voiceUrl);
-              }
-            } else {
-              console.warn(`[wecom-app] voiceTranscode enabled but ffmpeg not found; fallback to file send`);
-              result = await downloadAndSendFile(account, target, voiceUrl);
-            }
-          } else if (likelyUnsupported) {
-            console.log(`[wecom-app] Voice format .${ext} likely unsupported; fallback to file send`);
+          if (!transcodeEnabled && transcodeNeeded) {
+            console.log(`[wecom-app] Voice transcode disabled; fallback to file send`);
             result = await downloadAndSendFile(account, target, voiceUrl);
           } else {
-            result = await downloadAndSendVoice(account, target, voiceUrl);
+            const voiceResult = await downloadAndSendVoice(account, target, voiceUrl, {
+              contentType: params.mimeType,
+              transcode: transcodeEnabled,
+            });
+
+            if (!voiceResult.ok && transcodeEnabled && transcodeNeeded) {
+              console.warn(
+                `[wecom-app] Voice send failed after transcode attempt; fallback to file send. errcode=${voiceResult.errcode} errmsg=${voiceResult.errmsg}`
+              );
+
+              const fallbackResult = await downloadAndSendFile(account, target, voiceUrl);
+              result = fallbackResult.ok
+                ? fallbackResult
+                : {
+                    ...fallbackResult,
+                    errcode: fallbackResult.errcode ?? voiceResult.errcode,
+                    errmsg: [voiceResult.errmsg, fallbackResult.errmsg]
+                      .filter((value): value is string => Boolean(value))
+                      .join(" | fallback file send failed: "),
+                  };
+            } else {
+              result = voiceResult;
+            }
           }
         } else if (mediaType === "video") {
           // 视频: 下载 → 上传素材 → 发送

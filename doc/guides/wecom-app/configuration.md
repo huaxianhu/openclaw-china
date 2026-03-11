@@ -514,10 +514,11 @@ send user:CaiHongYu 你好
 
 **推荐方案（自动兜底）**
 
-开启 `voiceTranscode.enabled=true` 后：
+当前默认就会启用自动转码；只有显式配置 `voiceTranscode.enabled=false` 时才会关闭。
 
-- 系统存在 `ffmpeg`：遇到 wav/mp3 会 **自动转码为 amr** 再发送 voice
-- 没有 `ffmpeg`：会 **自动降级为 file 发送**（保证可达）
+- 常见音频（如 `wav/mp3/ogg/m4a/aac/flac/wma`）会优先转成 `.amr` 再发送 `voice`
+- 插件会优先使用内置 `ffmpeg-static`；本地开发或特殊环境下再回退到系统 `ffmpeg`
+- 如果转码后的 `voice` 上传/发送失败，会自动降级为 `file` 发送，保证尽量可达
 
 配置示例（openclaw.json）：
 
