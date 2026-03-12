@@ -111,6 +111,43 @@ describe("sendQQBotMediaWithFallback", () => {
     expect(sendText).not.toHaveBeenCalled();
     expect(onDelivered).not.toHaveBeenCalled();
   });
+
+  it("preserves accountId for media delivery and fallback text", async () => {
+    const sendMedia = vi.fn().mockResolvedValue({ channel: "qqbot", error: "upload failed" });
+    const sendText = vi.fn().mockResolvedValue({ channel: "qqbot", messageId: "m2", timestamp: 2 });
+    const logger = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    } as unknown as Logger;
+
+    await sendQQBotMediaWithFallback({
+      qqCfg: {},
+      to: "user:bot2-user",
+      mediaQueue: ["https://example.com/account-aware.png"],
+      replyToId: "reply-2",
+      replyEventId: "event-2",
+      accountId: "bot2",
+      logger,
+      outbound: { sendMedia, sendText },
+    });
+
+    expect(sendMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "user:bot2-user",
+        mediaUrl: "https://example.com/account-aware.png",
+        accountId: "bot2",
+      })
+    );
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "user:bot2-user",
+        text: "📎 https://example.com/account-aware.png",
+        accountId: "bot2",
+      })
+    );
+  });
 });
 
 describe("resolveQQBotTextReplyRefs", () => {

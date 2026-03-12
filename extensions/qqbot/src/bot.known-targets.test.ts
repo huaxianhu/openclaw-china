@@ -548,6 +548,46 @@ describe("QQBot direct session isolation", () => {
     );
   });
 
+  it("uses the routed qqbot account for direct typing and reply delivery", async () => {
+    const logger = createLogger();
+    setupSessionRuntime({
+      dispatchReplyWithBufferedBlockDispatcher: vi.fn(async ({ dispatcherOptions }) => {
+        await dispatcherOptions.deliver({ text: "reply from bot2" }, { kind: "final" });
+      }),
+    });
+
+    await handleQQBotDispatch({
+      eventType: "C2C_MESSAGE_CREATE",
+      eventData: {
+        id: "msg-bot2-account",
+        event_id: "evt-bot2-account",
+        content: "hello bot2",
+        timestamp: 1700000004500,
+        author: {
+          user_openid: "u-bot2",
+          username: "Bot Two User",
+        },
+      },
+      cfg: baseCfg,
+      accountId: "bot2",
+      logger,
+    });
+
+    expect(outboundMocks.sendTyping).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "user:u-bot2",
+        accountId: "bot2",
+      })
+    );
+    expect(outboundMocks.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "user:u-bot2",
+        text: "reply from bot2",
+        accountId: "bot2",
+      })
+    );
+  });
+
   it("isolates the same direct sender across different qqbot accounts", async () => {
     const logger = createLogger();
     const sessionRuntime = setupSessionRuntime({

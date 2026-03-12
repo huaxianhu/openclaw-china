@@ -62,13 +62,22 @@ type QQBotAgentRoute = {
   accountId: string;
   agentId?: string;
   mainSessionKey?: string;
+  effectiveSessionKey?: string;
 };
 
 const sessionDispatchQueue = new Map<string, Promise<void>>();
 
+function resolveQQBotRouteSessionKey(route: QQBotAgentRoute): string {
+  const effectiveSessionKey = route.effectiveSessionKey?.trim();
+  if (effectiveSessionKey) {
+    return effectiveSessionKey;
+  }
+  return route.sessionKey;
+}
+
 function buildSessionDispatchQueueKey(route: QQBotAgentRoute): string {
   const accountId = route.accountId?.trim() || DEFAULT_ACCOUNT_ID;
-  return `${accountId}:${route.sessionKey}`;
+  return `${accountId}:${resolveQQBotRouteSessionKey(route)}`;
 }
 
 function normalizeQQBotSessionKeyPart(value: string): string {
@@ -1101,12 +1110,14 @@ export async function sendQQBotMediaWithFallback(params: {
   mediaQueue: string[];
   replyToId?: string;
   replyEventId?: string;
+  accountId?: string;
   logger: Logger;
   onDelivered?: () => void;
   onError?: (error: string) => void;
   outbound?: Pick<typeof qqbotOutbound, "sendMedia" | "sendText">;
 }): Promise<void> {
-  const { qqCfg, to, mediaQueue, replyToId, replyEventId, logger, onDelivered, onError } = params;
+  const { qqCfg, to, mediaQueue, replyToId, replyEventId, accountId, logger, onDelivered, onError } =
+    params;
   const outbound = params.outbound ?? qqbotOutbound;
   for (const mediaUrl of mediaQueue) {
     const result = await outbound.sendMedia({
@@ -1115,6 +1126,7 @@ export async function sendQQBotMediaWithFallback(params: {
       mediaUrl,
       replyToId,
       replyEventId,
+      accountId,
     });
     if (result.error) {
       logger.error(`sendMedia failed: ${result.error}`);
@@ -1129,6 +1141,7 @@ export async function sendQQBotMediaWithFallback(params: {
         text: fallback,
         replyToId,
         replyEventId,
+        accountId,
       });
       if (fallbackResult.error) {
         logger.error(`sendText fallback failed: ${fallbackResult.error}`);
@@ -1195,7 +1208,9 @@ async function dispatchToAgent(params: {
 }): Promise<void> {
   const { inbound, cfg, qqCfg, accountId, logger, route } = params;
   const runtime = getQQBotRuntime();
+  const routeSessionKey = resolveQQBotRouteSessionKey(route);
   const target = resolveChatTarget(inbound);
+  const outboundAccountId = route.accountId ?? accountId;
   if (inbound.c2cOpenid) {
     const typing = await qqbotOutbound.sendTyping({
       cfg: { channels: { qqbot: qqCfg } },
@@ -1203,6 +1218,7 @@ async function dispatchToAgent(params: {
       replyToId: inbound.messageId,
       replyEventId: inbound.eventId,
       inputSecond: 60,
+      accountId: outboundAccountId,
     });
     if (typing.error) {
       logger.warn(`sendTyping failed: ${typing.error}`);
@@ -1240,6 +1256,7 @@ async function dispatchToAgent(params: {
         text: LONG_TASK_NOTICE_TEXT,
         replyToId: inbound.messageId,
         replyEventId: inbound.eventId,
+        accountId: outboundAccountId,
       });
       if (result.error) {
         logger.warn(`send long-task notice failed: ${result.error}`);
@@ -1263,7 +1280,7 @@ async function dispatchToAgent(params: {
     const envelopeOptions = replyApi.resolveEnvelopeFormatOptions?.(cfg);
     const previousTimestamp =
       storePath && sessionApi?.readSessionUpdatedAt
-        ? sessionApi.readSessionUpdatedAt({ storePath, sessionKey: route.sessionKey })
+        ? sessionApi.readSessionUpdatedAt({ storePath, sessionKey: routeSessionKey })
         : null;
     const resolvedAttachmentResult = await resolveInboundAttachmentsForAgent({
       attachments: inbound.attachments,
@@ -1281,6 +1298,7 @@ async function dispatchToAgent(params: {
         text: buildVoiceASRFallbackReply(resolvedAttachmentResult.asrErrorMessage),
         replyToId: inbound.messageId,
         replyEventId: inbound.eventId,
+        accountId: outboundAccountId,
       });
       if (fallback.error) {
         logger.error(`sendText ASR fallback failed: ${fallback.error}`);
@@ -1326,8 +1344,8 @@ async function dispatchToAgent(params: {
 
     const inboundCtx = buildInboundContext({
       event: inbound,
-      sessionKey: route.sessionKey,
-      accountId: route.accountId ?? accountId,
+      sessionKey: routeSessionKey,
+      accountId: outboundAccountId,
       body: inboundBody,
       rawBody,
       commandBody: rawBody,
@@ -1373,14 +1391,14 @@ async function dispatchToAgent(params: {
                 sessionKey: mainSessionKey ?? route.sessionKey,
                 channel: "qqbot",
                 to: stableTo,
-                accountId: route.accountId ?? accountId,
+                accountId: outboundAccountId,
               }
             : undefined;
 
         const recordSessionKey =
           typeof finalCtx.SessionKey === "string" && finalCtx.SessionKey.trim()
             ? finalCtx.SessionKey
-            : route.sessionKey;
+            : routeSessionKey;
 
         await sessionApi.recordInboundSession({
           storePath,
@@ -1408,7 +1426,7 @@ async function dispatchToAgent(params: {
     const tableMode = textApi?.resolveMarkdownTableMode?.({
       cfg,
       channel: "qqbot",
-      accountId: route.accountId ?? accountId,
+      accountId: outboundAccountId,
     });
     const resolvedTableMode = tableMode ?? "bullets";
     const chunkText = (text: string): string[] => {
@@ -1483,6 +1501,7 @@ async function dispatchToAgent(params: {
         mediaQueue,
         replyToId: textReplyRefs.replyToId,
         replyEventId: textReplyRefs.replyEventId,
+        accountId: outboundAccountId,
         logger,
         onDelivered: () => {
           markReplyDelivered();
@@ -1511,6 +1530,7 @@ async function dispatchToAgent(params: {
             text: chunk,
             replyToId: textReplyRefs.replyToId,
             replyEventId: textReplyRefs.replyEventId,
+            accountId: outboundAccountId,
           });
           if (result.error) {
             logger.error(`send buffered QQ markdown reply failed: ${result.error}`);
@@ -1596,6 +1616,7 @@ async function dispatchToAgent(params: {
             text: chunk,
             replyToId: textReplyRefs.replyToId,
             replyEventId: textReplyRefs.replyEventId,
+            accountId: outboundAccountId,
           });
           if (result.error) {
             logger.error(`sendText failed: ${result.error}`);
@@ -1612,6 +1633,7 @@ async function dispatchToAgent(params: {
         mediaQueue,
         replyToId: inbound.messageId,
         replyEventId: inbound.eventId,
+        accountId: outboundAccountId,
         logger,
         onDelivered: () => {
           markReplyDelivered();
@@ -1691,6 +1713,7 @@ async function dispatchToAgent(params: {
         text: noReplyFallback,
         replyToId: inbound.messageId,
         replyEventId: inbound.eventId,
+        accountId: outboundAccountId,
       });
       if (fallbackResult.error) {
         logger.error(`sendText no-reply fallback failed: ${fallbackResult.error}`);
@@ -1823,7 +1846,7 @@ export async function handleQQBotDispatch(params: DispatchParams): Promise<void>
         };
   const queueKey = buildSessionDispatchQueueKey(resolvedRoute);
   if (sessionDispatchQueue.has(queueKey)) {
-    logger.info(`session busy; queueing inbound dispatch sessionKey=${route.sessionKey}`);
+    logger.info(`session busy; queueing inbound dispatch sessionKey=${resolveQQBotRouteSessionKey(resolvedRoute)}`);
   }
 
   await runSerializedSessionDispatch(queueKey, async () =>
@@ -1833,7 +1856,7 @@ export async function handleQQBotDispatch(params: DispatchParams): Promise<void>
       qqCfg,
       accountId,
       logger,
-      route,
+      route: resolvedRoute,
     })
   );
 }
