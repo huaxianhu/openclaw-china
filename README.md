@@ -123,13 +123,15 @@
 <details>
 <summary><strong>点击展开更新日志</strong></summary>
 
+### 2026-03-15
+- `qqbot` 新增 `停止` / `/stop` 快速通道。当前任务正在执行时，这类中断命令会绕过本地排队立即发送给 OpenClaw，并丢弃同一会话里尚未处理的排队消息，减少“停不下来还继续串消息”的情况。
+- `qqbot` 新增 `c2cMarkdownChunkStrategy`，默认 `markdown-block`。QQ 私聊 Markdown 现在会优先按标题、表格、引用、分割线、代码块和正文块这些安全边界切分；如需兼容旧的纯长度切分行为，可切回 `length`。
+
 ### 2026-03-14
 - `qqbot` 新增私聊用户显示名别名映射 `displayAliases`。首期仅对 direct 用户生效，支持 `user:<openid>`、`<openid>`、`senderId` 等键名，方便按已有联系人信息覆盖默认显示名。
 - `qqbot` 现在会优先使用 `~/.openclaw/qqbot/data/known-targets.json` 里的 `displayName` 作为私聊用户显示名；如果没有，再回退到 `displayAliases`，最后才使用稳定 ID，减少多账号和备注名场景下的识别成本。
 - `qqbot` 新增内置 `qqbot-contact-send` skill，并会随插件自动注册到新会话的 `<available_skills>`。模型可直接基于 `known-targets.json` 按联系人备注/显示名解析发送对象，并默认优先使用当前会话的 `accountId` 过滤目标，降低误发给同名联系人的风险。
 - `qqbot` 在 QQ 私聊里开启 `/verbose on` 且 `replyFinalOnly=false` 后，assistant 的普通过渡说明和工具日志现在都会实时发送，并按真实生成顺序交错出现，不会再出现“日志先刷完、说明最后补发”的时序错乱。
-- `qqbot` 新增 `停止` / `/stop` 快速通道。当前任务正在执行时，这类中断命令会绕过本地排队立即发送给 OpenClaw，并丢弃同一会话里尚未处理的排队消息，减少“停不下来还继续串消息”的情况。
-- `qqbot` 新增 `c2cMarkdownChunkStrategy`，默认 `markdown-block`。QQ 私聊 Markdown 现在会优先按标题、表格、引用、分割线、代码块和正文块这些安全边界切分；如需兼容旧的纯长度切分行为，可切回 `length`。
 
 ### 2026-03-13
 - `qqbot` 现在能看懂 QQ 私聊里的“引用上一条消息”。用户问“这个是什么”“你刚才说的哪个文件”时，模型会一起参考被引用的那条内容来回答。
