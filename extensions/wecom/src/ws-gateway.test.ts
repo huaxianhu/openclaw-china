@@ -1,5 +1,8 @@
 import { once } from "node:events";
+import { existsSync, promises as fs } from "node:fs";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
@@ -39,7 +42,20 @@ describe("wecom ws gateway", () => {
       socket.on("message", (raw) => {
         const frame = JSON.parse(raw.toString()) as WecomWsFrame;
         received.push(frame);
-        if (frame.cmd === "aibot_subscribe" || frame.cmd === "aibot_send_msg" || frame.cmd === "ping") {
+        if (
+          frame.cmd === "aibot_subscribe" ||
+          frame.cmd === "aibot_send_msg" ||
+          frame.cmd === "aibot_get_mcp_config" ||
+          frame.cmd === "ping"
+        ) {
+          const body =
+            frame.cmd === "aibot_get_mcp_config"
+              ? {
+                  url: "https://doc-mcp.example.test/mcp",
+                  type: "streamable-http",
+                  is_authed: true,
+                }
+              : undefined;
           socket.send(
             JSON.stringify({
               cmd: frame.cmd,
@@ -47,6 +63,7 @@ describe("wecom ws gateway", () => {
                 req_id: frame.headers?.req_id,
               },
               errcode: 0,
+              body,
             })
           );
         }
@@ -144,7 +161,15 @@ describe("wecom ws gateway", () => {
     server.on("connection", (socket) => {
       socket.on("message", (raw) => {
         const frame = JSON.parse(raw.toString()) as WecomWsFrame;
-        if (frame.cmd === "aibot_subscribe") {
+        if (frame.cmd === "aibot_subscribe" || frame.cmd === "aibot_get_mcp_config") {
+          const body =
+            frame.cmd === "aibot_get_mcp_config"
+              ? {
+                  url: "https://doc-mcp.example.test/mcp",
+                  type: "streamable-http",
+                  is_authed: true,
+                }
+              : undefined;
           socket.send(
             JSON.stringify({
               cmd: frame.cmd,
@@ -152,6 +177,7 @@ describe("wecom ws gateway", () => {
                 req_id: frame.headers?.req_id,
               },
               errcode: 0,
+              body,
             })
           );
         }
@@ -433,5 +459,131 @@ describe("wecom ws gateway", () => {
         else resolve();
       });
     });
+  });
+
+  it("fetches doc MCP config after ws authentication and saves it under the OpenClaw state dir", async () => {
+    const tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "wecom-mcp-state-"));
+    const previousOpenClawStateDir = process.env.OPENCLAW_STATE_DIR;
+    process.env.OPENCLAW_STATE_DIR = tempStateDir;
+
+    const server = new WebSocketServer({ port: 0 });
+    await once(server, "listening");
+
+    const received: WecomWsFrame[] = [];
+    server.on("connection", (socket) => {
+      socket.on("message", (raw) => {
+        const frame = JSON.parse(raw.toString()) as WecomWsFrame;
+        received.push(frame);
+        if (frame.cmd === "aibot_subscribe") {
+          socket.send(
+            JSON.stringify({
+              cmd: frame.cmd,
+              headers: {
+                req_id: frame.headers?.req_id,
+              },
+              errcode: 0,
+            })
+          );
+          return;
+        }
+        if (frame.cmd === "aibot_get_mcp_config") {
+          socket.send(
+            JSON.stringify({
+              cmd: frame.cmd,
+              headers: {
+                req_id: frame.headers?.req_id,
+              },
+              errcode: 0,
+              body: {
+                url: "https://doc-mcp.example.test/mcp",
+                type: "streamable-http",
+                is_authed: true,
+              },
+            })
+          );
+        }
+      });
+    });
+
+    try {
+      const { port } = server.address() as AddressInfo;
+      const cfg: PluginConfig = {
+        channels: {
+          wecom: {
+            mode: "ws",
+            botId: "bot-1",
+            secret: "secret-1",
+            wsUrl: `ws://127.0.0.1:${port}`,
+            heartbeatIntervalMs: 20,
+            reconnectInitialDelayMs: 10,
+            reconnectMaxDelayMs: 40,
+          },
+        },
+      };
+      const account = resolveWecomAccount({ cfg, accountId: "default" });
+      const controller = new AbortController();
+
+      const gatewayPromise = startWecomWsGateway({
+        cfg,
+        account,
+        abortSignal: controller.signal,
+        runtime: {
+          log: () => {},
+          error: () => {},
+        },
+      });
+
+      const configPath = path.join(tempStateDir, "wecomConfig", "config.json");
+
+      await waitFor(() => received.some((frame) => frame.cmd === "aibot_get_mcp_config"));
+      await waitFor(() => existsSync(configPath));
+
+      const saved = JSON.parse(await fs.readFile(configPath, "utf8")) as {
+        mcpConfig?: {
+          doc?: {
+            type?: string;
+            url?: string;
+          };
+        };
+        accounts?: Record<
+          string,
+          {
+            isAuthed?: boolean;
+            mcpConfig?: {
+              doc?: {
+                type?: string;
+                url?: string;
+              };
+            };
+          }
+        >;
+      };
+
+      expect(saved.mcpConfig?.doc).toEqual({
+        type: "streamable-http",
+        url: "https://doc-mcp.example.test/mcp",
+      });
+      expect(saved.accounts?.default?.isAuthed).toBe(true);
+      expect(saved.accounts?.default?.mcpConfig?.doc).toEqual({
+        type: "streamable-http",
+        url: "https://doc-mcp.example.test/mcp",
+      });
+
+      controller.abort();
+      await expect(gatewayPromise).resolves.toBeUndefined();
+    } finally {
+      if (previousOpenClawStateDir === undefined) {
+        delete process.env.OPENCLAW_STATE_DIR;
+      } else {
+        process.env.OPENCLAW_STATE_DIR = previousOpenClawStateDir;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
   });
 });

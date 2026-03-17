@@ -6,6 +6,7 @@
   "license": "MIT",
   "files": [
     "dist",
+    "skills",
     "moltbot.plugin.json",
     "clawdbot.plugin.json",
     "openclaw.plugin.json"

@@ -6,6 +6,7 @@ import type { PluginConfig } from "./config.js";
 import { createLogger, type Logger } from "@openclaw-china/shared";
 import type { ResolvedWecomAccount } from "./types.js";
 import { dispatchWecomMessage } from "./bot.js";
+import { fetchAndSaveWecomDocMcpConfig } from "./mcp-config.js";
 import { tryGetWecomRuntime } from "./runtime.js";
 import {
   appendWecomWsActiveStreamChunk,
@@ -637,6 +638,11 @@ export async function startWecomWsGateway(opts: StartWecomWsGatewayOptions): Pro
         configured: true,
         connectionState: "ready",
         lastSubscribeAt: Date.now(),
+      });
+      void fetchAndSaveWecomDocMcpConfig({
+        client,
+        accountId: account.accountId,
+        runtime,
       });
     });
 
