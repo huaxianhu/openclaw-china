@@ -25,6 +25,7 @@ type WsMessageContext = {
   sessionKey?: string;
   runId?: string;
   placeholderContent: string;
+  suppressVisibleFallback: boolean;
   started: boolean;
   finished: boolean;
   queue: Promise<void>;
@@ -47,7 +48,6 @@ const EVENT_CONTEXT_TTL_MS = 10 * 1000;
 const STREAM_FINISH_GRACE_MS = 2_500;
 export const WECOM_WS_THINKING_MESSAGE = "<think></think>";
 export const WECOM_WS_FINISH_FALLBACK_MESSAGE = "✅ 处理完成。";
-export const WECOM_WS_MEDIA_FINISH_MESSAGE = "📎 文件已发送，请查收。";
 
 const messageContexts = new Map<string, WsMessageContext>();
 const eventContexts = new Map<string, WsEventContext>();
@@ -270,6 +270,7 @@ export function registerWecomWsMessageContext(params: {
     createdAt: now(),
     updatedAt: now(),
     placeholderContent: "",
+    suppressVisibleFallback: false,
     started: false,
     finished: false,
     queue: Promise.resolve(),
@@ -351,6 +352,21 @@ export function bindWecomWsRouteContext(params: {
     context.runId = runId;
     messageByRunId.set(routeKey(context.accountId, runId), key);
   }
+  context.updatedAt = now();
+}
+
+export function markWecomWsMessageContextSkipped(params: {
+  accountId: string;
+  reqId: string;
+  reason?: string;
+}): void {
+  pruneMessageContexts();
+  const key = messageKey(params.accountId.trim(), params.reqId.trim());
+  const context = messageContexts.get(key);
+  if (!context || context.finished) return;
+  const reason = String(params.reason ?? "").trim();
+  if (!reason) return;
+  context.suppressVisibleFallback = true;
   context.updatedAt = now();
 }
 
@@ -517,13 +533,12 @@ export async function finishWecomWsMessageContext(params: {
         ? `${context.content}\n\n${errorMessage}`
         : errorMessage
       : context.content;
-    const fallbackContent = !finalContent
-      ? context.msgItems.length > 0
-        ? WECOM_WS_MEDIA_FINISH_MESSAGE
-        : context.placeholderContent === WECOM_WS_THINKING_MESSAGE
-          ? WECOM_WS_FINISH_FALLBACK_MESSAGE
-          : undefined
-      : undefined;
+    const fallbackContent =
+      !finalContent &&
+      !context.suppressVisibleFallback &&
+      context.placeholderContent === WECOM_WS_THINKING_MESSAGE
+        ? WECOM_WS_FINISH_FALLBACK_MESSAGE
+        : undefined;
     const finishContent = finalContent || fallbackContent;
     const sendFinish = context.started || Boolean(finishContent) || context.msgItems.length > 0;
     if (sendFinish) {

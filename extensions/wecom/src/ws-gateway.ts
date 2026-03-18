@@ -14,6 +14,7 @@ import {
   appendWecomWsActiveStreamReply,
   bindWecomWsRouteContext,
   clearWecomWsReplyContextsForAccount,
+  markWecomWsMessageContextSkipped,
   registerWecomWsEventContext,
   registerWecomWsMessageContext,
   scheduleWecomWsMessageContextFinish,
@@ -468,6 +469,13 @@ export async function startWecomWsGateway(opts: StartWecomWsGatewayOptions): Pro
               reqId: callback.reqId,
               sessionKey: context.sessionKey,
               runId: context.runId,
+            });
+          },
+          onSkip: (info) => {
+            markWecomWsMessageContextSkipped({
+              accountId: account.accountId,
+              reqId: callback.reqId,
+              reason: info.reason,
             });
           },
           onChunk: async (text) => {

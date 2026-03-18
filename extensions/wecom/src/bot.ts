@@ -42,6 +42,7 @@ export type WecomDispatchHooks = {
   onRouteContext?: (context: { sessionKey?: string; runId?: string }) => void;
   onChunk: (text: string) => void | Promise<void>;
   onRichChunk?: (chunk: WecomWsReplyChunk) => void | Promise<void>;
+  onSkip?: (info: { kind: string; reason: string }) => void;
   onError?: (err: unknown) => void;
 };
 
@@ -650,6 +651,9 @@ export async function dispatchWecomMessage(params: {
           });
           if (!normalized.trim()) return;
           await hooks.onChunk(normalized);
+        },
+        onSkip: (_payload: unknown, info: { kind: string; reason: string }) => {
+          hooks.onSkip?.(info);
         },
         onError: (err: unknown, info: { kind: string }) => {
           hooks.onError?.(err);
