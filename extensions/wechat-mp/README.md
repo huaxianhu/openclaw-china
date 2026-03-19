@@ -35,7 +35,8 @@
       "token": "your-callback-token",
       "encodingAESKey": "your-43-char-encoding-aes-key",
       "messageMode": "safe",
-      "replyMode": "passive",
+      "replyMode": "active",
+      "activeDeliveryMode": "split",
       "welcomeText": "你好，欢迎关注。"
     }
   }
@@ -47,7 +48,11 @@
 1. 公众号后台把服务器地址指向你的网关回调地址。
 2. `plain` 模式可先做最小链路验证；`safe/compat` 需要 `encodingAESKey`。
 3. 如果需要 active outbound，必须额外配置 `appSecret`。
-4. 推荐先用：
+4. `replyMode=active` 时可用 `activeDeliveryMode` 控制主动发送行为：
+   - `split`：每个日志 / chunk 单独发一条消息
+   - `merged`：等待 reply pipeline 结束后合并成一条消息发送
+5. `replyMode=passive` 时始终单次 HTTP 回包，`activeDeliveryMode` 不生效。
+6. 推荐先用：
 
 ```bash
 pnpm -F @openclaw-china/wechat-mp build

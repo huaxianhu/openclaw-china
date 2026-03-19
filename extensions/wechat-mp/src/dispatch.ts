@@ -54,6 +54,7 @@ export async function dispatchWechatMpCandidate(params: {
   account: ResolvedWechatMpAccount;
   candidate: WechatMpInboundCandidate;
   runtime: PluginRuntime;
+  onChunk?: (text: string) => Promise<void>;
   log?: (message: string) => void;
   error?: (message: string) => void;
 }): Promise<{ dispatched: boolean; reason?: string; combinedReply?: string }> {
@@ -156,6 +157,7 @@ export async function dispatchWechatMpCandidate(params: {
       EventName: candidate.event,
       EventKey: candidate.eventKey,
     };
+  ctxPayload.CommandAuthorized = true;
 
   if (channel.session?.recordInboundSession && storePath) {
     await channel.session.recordInboundSession({
@@ -195,7 +197,13 @@ export async function dispatchWechatMpCandidate(params: {
       deliver: async (payload: { text?: string }) => {
         const text = String(payload.text ?? "").trim();
         if (!text) return;
-        responseChunks.push(convertTables(text));
+        const convertedText = convertTables(text);
+        if (!convertedText) return;
+        if (params.onChunk) {
+          await params.onChunk(convertedText);
+          return;
+        }
+        responseChunks.push(convertedText);
       },
       onError: (error, info) => {
         logger.error(`${info.kind} reply failed: ${String(error)}`);
@@ -203,7 +211,7 @@ export async function dispatchWechatMpCandidate(params: {
     },
   });
 
-  const combinedReply = responseChunks.join("\n\n").trim();
+  const combinedReply = params.onChunk ? "" : responseChunks.join("\n\n").trim();
   if (combinedReply) {
     await updateAccountState(params.account.accountId, {
       lastOutboundAt: Date.now(),

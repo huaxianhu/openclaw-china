@@ -23,6 +23,10 @@
         "type": "string",
         "enum": ["passive", "active"]
       },
+      "activeDeliveryMode": {
+        "type": "string",
+        "enum": ["merged", "split"]
+      },
       "welcomeText": { "type": "string" },
       "dmPolicy": {
         "type": "string",
@@ -51,6 +55,10 @@
               "type": "string",
               "enum": ["passive", "active"]
             },
+            "activeDeliveryMode": {
+              "type": "string",
+              "enum": ["merged", "split"]
+            },
             "welcomeText": { "type": "string" },
             "dmPolicy": {
               "type": "string",
@@ -69,6 +77,7 @@
     "token": { "label": "服务器配置 Token", "sensitive": true },
     "webhookPath": { "label": "Webhook Path" },
     "messageMode": { "label": "消息加解密模式 (plain/safe/compat)" },
-    "replyMode": { "label": "回复模式 (passive/active)" }
+    "replyMode": { "label": "回复模式 (passive/active)" },
+    "activeDeliveryMode": { "label": "主动发送模式 (merged/split)" }
   }
 }

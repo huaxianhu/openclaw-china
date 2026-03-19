@@ -46,6 +46,13 @@ export type WechatMpMessageMode = "plain" | "safe" | "compat";
 export type WechatMpReplyMode = "passive" | "active";
 
 /**
+ * WeChat MP active delivery mode.
+ * - merged: Buffer all chunks and send one final active message
+ * - split: Send each chunk as its own active message
+ */
+export type WechatMpActiveDeliveryMode = "merged" | "split";
+
+/**
  * Per-account configuration for WeChat MP.
  */
 export type WechatMpAccountConfig = {
@@ -58,6 +65,7 @@ export type WechatMpAccountConfig = {
   webhookPath?: string;
   messageMode?: WechatMpMessageMode;
   replyMode?: WechatMpReplyMode;
+  activeDeliveryMode?: WechatMpActiveDeliveryMode;
   welcomeText?: string;
   dmPolicy?: WechatMpDmPolicy;
   allowFrom?: string[];

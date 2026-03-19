@@ -5,7 +5,11 @@ import {
   encryptWechatMpMessage,
 } from "./crypto.js";
 import { sendWechatMpMessage } from "./api.js";
-import type { ResolvedWechatMpAccount, WechatMpReplyMode } from "./types.js";
+import type {
+  ResolvedWechatMpAccount,
+  WechatMpActiveDeliveryMode,
+  WechatMpReplyMode,
+} from "./types.js";
 
 export type PassiveReplyResult = {
   ok: boolean;
@@ -113,4 +117,8 @@ export async function sendWechatMpActiveText(params: {
 
 export function resolveReplyMode(account: ResolvedWechatMpAccount): WechatMpReplyMode {
   return account.config.replyMode ?? "passive";
+}
+
+export function resolveActiveDeliveryMode(account: ResolvedWechatMpAccount): WechatMpActiveDeliveryMode {
+  return account.config.activeDeliveryMode ?? "split";
 }

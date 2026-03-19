@@ -24,14 +24,16 @@ function createAccount(overrides?: Partial<ResolvedWechatMpAccount>): ResolvedWe
   };
 }
 
-function createRuntime() {
+function createRuntime(replyTexts: string[] = ["reply text"]) {
   const resolveAgentRoute = vi.fn(() => ({
     sessionKey: "session-1",
     accountId: "default",
     agentId: "agent-1",
   }));
   const dispatchReplyWithBufferedBlockDispatcher = vi.fn(async (params: { dispatcherOptions: { deliver: (payload: { text?: string }) => Promise<void> } }) => {
-    await params.dispatcherOptions.deliver({ text: "reply text" });
+    for (const text of replyTexts) {
+      await params.dispatcherOptions.deliver({ text });
+    }
   });
   const recordInboundSession = vi.fn(async () => undefined);
   const readSessionUpdatedAt = vi.fn(() => null);
@@ -130,10 +132,11 @@ describe("wechat-mp dispatch", () => {
     expect(recordInboundSession).toHaveBeenCalledTimes(1);
     const calls = (recordInboundSession as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     const recordCall = calls[0]?.[0] as
-      | { sessionKey?: string; ctx?: { SessionKey?: string } }
+      | { sessionKey?: string; ctx?: { SessionKey?: string; CommandAuthorized?: boolean } }
       | undefined;
     expect(recordCall?.sessionKey).toBe("session-1");
     expect(recordCall?.ctx?.SessionKey).toBe("session-1");
+    expect(recordCall?.ctx?.CommandAuthorized).toBe(true);
   });
 
   it("skips non-intentful event candidate", async () => {
@@ -167,5 +170,38 @@ describe("wechat-mp dispatch", () => {
     expect(result.dispatched).toBe(true);
     expect(resolveAgentRoute).toHaveBeenCalledTimes(1);
     expect(dispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges delivered chunks by default", async () => {
+    const account = createAccount();
+    const { runtime } = createRuntime(["step 1", "step 2"]);
+
+    const result = await dispatchWechatMpCandidate({
+      cfg: {} as PluginConfig,
+      account,
+      candidate: createTextCandidate(),
+      runtime,
+    });
+
+    expect(result.combinedReply).toBe("step 1\n\nstep 2");
+  });
+
+  it("forwards chunks one by one in split mode", async () => {
+    const account = createAccount();
+    const { runtime } = createRuntime(["step 1", "", "step 2"]);
+    const onChunk = vi.fn(async () => undefined);
+
+    const result = await dispatchWechatMpCandidate({
+      cfg: {} as PluginConfig,
+      account,
+      candidate: createTextCandidate(),
+      runtime,
+      onChunk,
+    });
+
+    expect(onChunk).toHaveBeenCalledTimes(2);
+    expect(onChunk).toHaveBeenNthCalledWith(1, "step 1");
+    expect(onChunk).toHaveBeenNthCalledWith(2, "step 2");
+    expect(result.combinedReply).toBe("");
   });
 });

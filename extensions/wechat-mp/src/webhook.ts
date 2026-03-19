@@ -3,7 +3,12 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { decryptWechatMpMessage, parseWechatMpXml, verifyMsgSignature, verifySignature } from "./crypto.js";
 import { dispatchWechatMpCandidate } from "./dispatch.js";
 import { normalizeWechatMpInbound } from "./inbound.js";
-import { buildPassiveTextReply, resolveReplyMode, sendWechatMpActiveText } from "./send.js";
+import {
+  buildPassiveTextReply,
+  resolveActiveDeliveryMode,
+  resolveReplyMode,
+  sendWechatMpActiveText,
+} from "./send.js";
 import { markProcessedMessage, updateAccountState } from "./state.js";
 import { tryGetWechatMpRuntime } from "./runtime.js";
 import { resolveWechatMpAccount } from "./config.js";
@@ -177,11 +182,29 @@ async function handoffInboundCandidate(
     `inbound accepted msgType=${candidate.msgType} account=${candidate.accountId} from=${candidate.openId} intent=${candidate.hasUserIntent}`
   );
 
+  const replyMode = resolveReplyMode(target.account);
+  const activeDeliveryMode = resolveActiveDeliveryMode(target.account);
   const result = await dispatchWechatMpCandidate({
     cfg: target.config,
     account: target.account,
     candidate,
     runtime,
+    onChunk:
+      replyMode === "active" && activeDeliveryMode === "split"
+        ? async (text) => {
+            const activeResult = await sendWechatMpActiveText({
+              account: target.account,
+              toUserName: candidate.openId,
+              text,
+            });
+            if (!activeResult.ok) {
+              await updateAccountState(target.account.accountId, {
+                lastError: activeResult.error,
+              });
+              logger.error(`active send failed: ${activeResult.error ?? "unknown error"}`);
+            }
+          }
+        : undefined,
     log: target.runtime.log,
     error: target.runtime.error,
   });
@@ -198,7 +221,6 @@ async function handoffInboundCandidate(
     return { dispatched: true };
   }
 
-  const replyMode = resolveReplyMode(target.account);
   if (replyMode === "active") {
     const activeResult = await sendWechatMpActiveText({
       account: target.account,

@@ -6,6 +6,18 @@ import { Socket } from "node:net";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { sendWechatMpActiveTextMock } = vi.hoisted(() => ({
+  sendWechatMpActiveTextMock: vi.fn(async () => ({ ok: true })),
+}));
+
+vi.mock("./send.js", async () => {
+  const actual = await vi.importActual<typeof import("./send.js")>("./send.js");
+  return {
+    ...actual,
+    sendWechatMpActiveText: sendWechatMpActiveTextMock,
+  };
+});
+
 import { buildWechatMpXml, computeMsgSignature, computeSignature, encryptWechatMpMessage, parseWechatMpXml } from "./crypto.js";
 import { flushWechatMpStateForTests, setWechatMpStateFilePathForTests } from "./state.js";
 import { handleWechatMpWebhookRequest, registerWechatMpWebhookTarget } from "./webhook.js";
@@ -94,6 +106,48 @@ function createTarget(params?: {
   };
 }
 
+function createEncryptedTextRequest(params?: {
+  path?: string;
+  content?: string;
+  msgId?: string;
+  openId?: string;
+}) {
+  const timestamp = "1710000000";
+  const nonce = "nonce-post";
+  const plaintext = buildWechatMpXml({
+    ToUserName: appId,
+    FromUserName: params?.openId ?? "openid-1",
+    CreateTime: timestamp,
+    MsgType: "text",
+    Content: params?.content ?? "hello",
+    MsgId: params?.msgId ?? "msg-1",
+  });
+  const encrypted = encryptWechatMpMessage({
+    encodingAESKey,
+    appId,
+    plaintext,
+  }).encrypt;
+  const signature = computeMsgSignature({
+    token,
+    timestamp,
+    nonce,
+    encrypt: encrypted,
+  });
+  const rawBody = buildWechatMpXml({
+    ToUserName: appId,
+    Encrypt: encrypted,
+    MsgSignature: signature,
+    TimeStamp: timestamp,
+    Nonce: nonce,
+  });
+
+  return createMockRequest({
+    method: "POST",
+    url: `${params?.path ?? "/wechat-mp"}?msg_signature=${encodeURIComponent(signature)}&timestamp=${encodeURIComponent(timestamp)}&nonce=${encodeURIComponent(nonce)}`,
+    rawBody,
+  });
+}
+
 let tempDir = "";
 let stateFilePath = "";
 
@@ -107,6 +161,8 @@ afterEach(async () => {
   await flushWechatMpStateForTests();
   clearWechatMpRuntime();
   setWechatMpStateFilePathForTests();
+  sendWechatMpActiveTextMock.mockReset();
+  sendWechatMpActiveTextMock.mockResolvedValue({ ok: true });
   vi.restoreAllMocks();
   if (tempDir) {
     await rm(tempDir, { recursive: true, force: true });
@@ -377,6 +433,238 @@ describe("wechat-mp webhook", () => {
       const parsed = parseWechatMpXml(res._getData());
       expect(parsed.Encrypt).toBeTruthy();
       expect(dispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("records slash command as command-authorized context", async () => {
+    const recordInboundSession = vi.fn(async () => undefined);
+    setWechatMpRuntime({
+      channel: {
+        routing: {
+          resolveAgentRoute: () => ({
+            sessionKey: "session-1",
+            accountId: "default",
+            agentId: "agent-1",
+          }),
+        },
+        reply: {
+          dispatchReplyWithBufferedBlockDispatcher: vi.fn(async () => undefined),
+        },
+        session: {
+          resolveStorePath: () => "/tmp/session-store",
+          readSessionUpdatedAt: () => null,
+          recordInboundSession,
+        },
+      },
+    });
+
+    const unregister = registerWechatMpWebhookTarget(createTarget());
+
+    try {
+      const req = createEncryptedTextRequest({ content: "/verbose on", msgId: "msg-command" });
+      const res = createMockResponse();
+
+      expect(await handleWechatMpWebhookRequest(req, res)).toBe(true);
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getData()).toBe("success");
+      expect(recordInboundSession).toHaveBeenCalledTimes(1);
+      const recordCall = (recordInboundSession as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as
+        | { ctx?: { CommandBody?: string; CommandAuthorized?: boolean } }
+        | undefined;
+      expect(recordCall?.ctx?.CommandBody).toBe("/verbose on");
+      expect(recordCall?.ctx?.CommandAuthorized).toBe(true);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("ignores split delivery config in passive mode", async () => {
+    const dispatchReplyWithBufferedBlockDispatcher = vi.fn(async (params: {
+      dispatcherOptions: { deliver: (payload: { text?: string }) => Promise<void> };
+    }) => {
+      await params.dispatcherOptions.deliver({ text: "passive final reply" });
+    });
+    setWechatMpRuntime({
+      channel: {
+        routing: {
+          resolveAgentRoute: () => ({
+            sessionKey: "session-1",
+            accountId: "default",
+            agentId: "agent-1",
+          }),
+        },
+        reply: {
+          dispatchReplyWithBufferedBlockDispatcher,
+        },
+        session: {
+          resolveStorePath: () => "/tmp/session-store",
+          readSessionUpdatedAt: () => null,
+          recordInboundSession: async () => undefined,
+        },
+      },
+    });
+
+    const unregister = registerWechatMpWebhookTarget(
+      createTarget({
+        account: {
+          config: {
+            appId,
+            appSecret: "secret",
+            token,
+            encodingAESKey,
+            webhookPath: "/wechat-mp-passive-split",
+            messageMode: "safe",
+            replyMode: "passive",
+            activeDeliveryMode: "split",
+          },
+        },
+        path: "/wechat-mp-passive-split",
+      })
+    );
+
+    try {
+      const req = createEncryptedTextRequest({ path: "/wechat-mp-passive-split", msgId: "msg-passive-split" });
+      const res = createMockResponse();
+
+      expect(await handleWechatMpWebhookRequest(req, res)).toBe(true);
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getData()).toContain("<xml>");
+      expect(sendWechatMpActiveTextMock).not.toHaveBeenCalled();
+      expect(dispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("sends one merged active message in active merged mode", async () => {
+    const dispatchReplyWithBufferedBlockDispatcher = vi.fn(async (params: {
+      dispatcherOptions: { deliver: (payload: { text?: string }) => Promise<void> };
+    }) => {
+      await params.dispatcherOptions.deliver({ text: "step 1" });
+      await params.dispatcherOptions.deliver({ text: "step 2" });
+    });
+    setWechatMpRuntime({
+      channel: {
+        routing: {
+          resolveAgentRoute: () => ({
+            sessionKey: "session-1",
+            accountId: "default",
+            agentId: "agent-1",
+          }),
+        },
+        reply: {
+          dispatchReplyWithBufferedBlockDispatcher,
+        },
+        session: {
+          resolveStorePath: () => "/tmp/session-store",
+          readSessionUpdatedAt: () => null,
+          recordInboundSession: async () => undefined,
+        },
+      },
+    });
+
+    const unregister = registerWechatMpWebhookTarget(
+      createTarget({
+        account: {
+          config: {
+            appId,
+            appSecret: "secret",
+            token,
+            encodingAESKey,
+            webhookPath: "/wechat-mp-active-merged",
+            messageMode: "safe",
+            replyMode: "active",
+            activeDeliveryMode: "merged",
+          },
+        },
+        path: "/wechat-mp-active-merged",
+      })
+    );
+
+    try {
+      const req = createEncryptedTextRequest({ path: "/wechat-mp-active-merged", msgId: "msg-active-merged" });
+      const res = createMockResponse();
+
+      expect(await handleWechatMpWebhookRequest(req, res)).toBe(true);
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getData()).toBe("success");
+      expect(sendWechatMpActiveTextMock).toHaveBeenCalledTimes(1);
+      expect(sendWechatMpActiveTextMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toUserName: "openid-1",
+          text: "step 1\n\nstep 2",
+        })
+      );
+    } finally {
+      unregister();
+    }
+  });
+
+  it("sends one active message per chunk in active split mode", async () => {
+    const dispatchReplyWithBufferedBlockDispatcher = vi.fn(async (params: {
+      dispatcherOptions: { deliver: (payload: { text?: string }) => Promise<void> };
+    }) => {
+      await params.dispatcherOptions.deliver({ text: "log 1" });
+      await params.dispatcherOptions.deliver({ text: "log 2" });
+    });
+    setWechatMpRuntime({
+      channel: {
+        routing: {
+          resolveAgentRoute: () => ({
+            sessionKey: "session-1",
+            accountId: "default",
+            agentId: "agent-1",
+          }),
+        },
+        reply: {
+          dispatchReplyWithBufferedBlockDispatcher,
+        },
+        session: {
+          resolveStorePath: () => "/tmp/session-store",
+          readSessionUpdatedAt: () => null,
+          recordInboundSession: async () => undefined,
+        },
+      },
+    });
+
+    const unregister = registerWechatMpWebhookTarget(
+      createTarget({
+        account: {
+          config: {
+            appId,
+            appSecret: "secret",
+            token,
+            encodingAESKey,
+            webhookPath: "/wechat-mp-active-split",
+            messageMode: "safe",
+            replyMode: "active",
+            activeDeliveryMode: "split",
+          },
+        },
+        path: "/wechat-mp-active-split",
+      })
+    );
+
+    try {
+      const req = createEncryptedTextRequest({ path: "/wechat-mp-active-split", msgId: "msg-active-split" });
+      const res = createMockResponse();
+
+      expect(await handleWechatMpWebhookRequest(req, res)).toBe(true);
+      expect(res._getStatusCode()).toBe(200);
+      expect(res._getData()).toBe("success");
+      await vi.waitFor(() => {
+        expect(sendWechatMpActiveTextMock).toHaveBeenCalledTimes(2);
+      });
+      expect(sendWechatMpActiveTextMock).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ toUserName: "openid-1", text: "log 1" })
+      );
+      expect(sendWechatMpActiveTextMock).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ toUserName: "openid-1", text: "log 2" })
+      );
     } finally {
       unregister();
     }
