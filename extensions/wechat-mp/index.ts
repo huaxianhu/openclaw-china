@@ -2,12 +2,15 @@ import type { IncomingMessage, ServerResponse } from "http";
 
 import { registerChinaSetupCli, showChinaInstallHint } from "@openclaw-china/shared";
 
-import { wechatMpPlugin } from "./src/channel.js";
-import { setWechatMpRuntime } from "./src/runtime.js";
+import { wechatMpPlugin, DEFAULT_ACCOUNT_ID } from "./src/channel.js";
+import { setWechatMpRuntime, getWechatMpRuntime } from "./src/runtime.js";
+import { sendWechatMpActiveText } from "./src/send.js";
 import { handleWechatMpWebhookRequest } from "./src/webhook.js";
 
-export { wechatMpPlugin } from "./src/channel.js";
-export { setWechatMpRuntime } from "./src/runtime.js";
+export { wechatMpPlugin, DEFAULT_ACCOUNT_ID } from "./src/channel.js";
+export type { ResolvedWechatMpAccount } from "./src/channel.js";
+export { setWechatMpRuntime, getWechatMpRuntime } from "./src/runtime.js";
+export { sendWechatMpActiveText } from "./src/send.js";
 
 type HttpRouteMatch = "exact" | "prefix";
 type HttpRouteAuth = "gateway" | "plugin";

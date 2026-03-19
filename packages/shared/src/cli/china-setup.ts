@@ -348,6 +348,8 @@ function isChannelConfigured(cfg: ConfigRoot, channelId: ChannelId): boolean {
         hasNonEmptyString(channelCfg.token) &&
         hasNonEmptyString(channelCfg.encodingAESKey)
       );
+    case "wechat-mp":
+      return hasNonEmptyString(channelCfg.appId) && hasNonEmptyString(channelCfg.token);
     default:
       return false;
   }
@@ -703,6 +705,74 @@ async function configureWecomKf(prompter: SetupPrompter, cfg: ConfigRoot): Promi
   });
 }
 
+async function configureWechatMp(prompter: SetupPrompter, cfg: ConfigRoot): Promise<ConfigRoot> {
+  section("配置 WeChat MP（微信公众号）");
+  showGuideLink("wechat-mp");
+  const existing = getChannelConfig(cfg, "wechat-mp");
+
+  const webhookPath = await prompter.askText({
+    label: "Webhook 路径（默认 /wechat-mp）",
+    defaultValue: toTrimmedString(existing.webhookPath) ?? "/wechat-mp",
+    required: true,
+  });
+  const appId = await prompter.askText({
+    label: "公众号 appId",
+    defaultValue: toTrimmedString(existing.appId),
+    required: true,
+  });
+  const appSecret = await prompter.askSecret({
+    label: "公众号 appSecret（主动发送需要）",
+    existingValue: toTrimmedString(existing.appSecret),
+    required: false,
+  });
+  const token = await prompter.askSecret({
+    label: "服务器配置 token",
+    existingValue: toTrimmedString(existing.token),
+    required: true,
+  });
+  const messageMode = await prompter.askSelect<"plain" | "safe" | "compat">(
+    "消息加解密模式",
+    [
+      { value: "plain", label: "plain（明文）" },
+      { value: "safe", label: "safe（安全模式）" },
+      { value: "compat", label: "compat（兼容模式）" },
+    ],
+    (toTrimmedString(existing.messageMode) as "plain" | "safe" | "compat" | undefined) ?? "safe"
+  );
+  let encodingAESKey = toTrimmedString(existing.encodingAESKey);
+  if (messageMode !== "plain") {
+    encodingAESKey = await prompter.askSecret({
+      label: "EncodingAESKey（safe/compat 必填）",
+      existingValue: encodingAESKey,
+      required: true,
+    });
+  }
+  const replyMode = await prompter.askSelect<"passive" | "active">(
+    "回复模式",
+    [
+      { value: "passive", label: "passive（5 秒内被动回复）" },
+      { value: "active", label: "active（客服消息主动发送）" },
+    ],
+    (toTrimmedString(existing.replyMode) as "passive" | "active" | undefined) ?? "passive"
+  );
+  const welcomeText = await prompter.askText({
+    label: "欢迎语（可选）",
+    defaultValue: toTrimmedString(existing.welcomeText),
+    required: false,
+  });
+
+  return mergeChannelConfig(cfg, "wechat-mp", {
+    webhookPath,
+    appId,
+    appSecret: appSecret || undefined,
+    token,
+    encodingAESKey: messageMode === "plain" ? undefined : encodingAESKey,
+    messageMode,
+    replyMode,
+    welcomeText: welcomeText || undefined,
+  });
+}
+
 async function configureQQBot(prompter: SetupPrompter, cfg: ConfigRoot): Promise<ConfigRoot> {
   section("配置 QQBot（QQ 机器人）");
   showGuideLink("qqbot");
@@ -769,6 +839,8 @@ async function configureSingleChannel(
       return configureWecomApp(prompter, cfg);
     case "wecom-kf":
       return configureWecomKf(prompter, cfg);
+    case "wechat-mp":
+      return configureWechatMp(prompter, cfg);
     case "qqbot":
       return configureQQBot(prompter, cfg);
     default:

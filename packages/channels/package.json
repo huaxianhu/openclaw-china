@@ -58,6 +58,7 @@
     "@openclaw-china/dingtalk": "2026.3.9-1",
     "@openclaw-china/feishu-china": "2026.3.9-1",
     "@openclaw-china/qqbot": "2026.3.9-1",
+    "@openclaw-china/wechat-mp": "workspace:*",
     "@openclaw-china/shared": "workspace:*",
     "@openclaw-china/wecom": "2026.3.9-1",
     "@openclaw-china/wecom-app": "2026.3.9-1",

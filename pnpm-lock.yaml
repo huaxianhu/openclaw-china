@@ -244,6 +244,9 @@ importers:
       '@openclaw-china/shared':
         specifier: workspace:*
         version: link:../shared
+      '@openclaw-china/wechat-mp':
+        specifier: workspace:*
+        version: link:../../extensions/wechat-mp
       '@openclaw-china/wecom':
         specifier: 2026.3.9-1
         version: link:../../extensions/wecom
