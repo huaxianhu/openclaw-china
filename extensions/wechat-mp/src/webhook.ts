@@ -363,11 +363,6 @@ export async function handleWechatMpWebhookRequest(
     });
 
     if (!target) {
-      const fallback = targets.find((candidate) => candidate.account.config.messageMode === "plain");
-      target = fallback;
-    }
-
-    if (!target) {
       res.statusCode = 401;
       res.end("unauthorized");
       return true;

@@ -202,6 +202,50 @@ describe("wechat-mp webhook", () => {
     }
   });
 
+  it("rejects plain POST when signature is invalid", async () => {
+    const unregister = registerWechatMpWebhookTarget(
+      createTarget({
+        account: {
+          config: {
+            appId,
+            appSecret: "secret",
+            token,
+            webhookPath: "/wechat-mp-plain-post",
+            messageMode: "plain",
+            replyMode: "passive",
+          },
+        },
+        path: "/wechat-mp-plain-post",
+      })
+    );
+
+    try {
+      const timestamp = "1710000000";
+      const nonce = "nonce-plain-post";
+      const rawBody = buildWechatMpXml({
+        ToUserName: appId,
+        FromUserName: "openid-plain",
+        CreateTime: timestamp,
+        MsgType: "text",
+        Content: "hello",
+        MsgId: "msg-plain",
+      });
+      const req = createMockRequest({
+        method: "POST",
+        url: `/wechat-mp-plain-post?signature=bad-signature&timestamp=${encodeURIComponent(timestamp)}&nonce=${encodeURIComponent(nonce)}`,
+        rawBody,
+      });
+      const res = createMockResponse();
+
+      const handled = await handleWechatMpWebhookRequest(req, res);
+      expect(handled).toBe(true);
+      expect(res._getStatusCode()).toBe(401);
+      expect(res._getData()).toBe("unauthorized");
+    } finally {
+      unregister();
+    }
+  });
+
   it("suppresses duplicate msgid via state dedupe", async () => {
     const unregister = registerWechatMpWebhookTarget(createTarget());
 
