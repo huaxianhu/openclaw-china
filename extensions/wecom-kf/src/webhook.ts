@@ -144,6 +144,14 @@ async function pullAndDispatchMessages(params: {
   const runtime = tryGetWecomKfRuntime();
   const effectiveOpenKfId = params.callbackOpenKfId?.trim() || account.openKfId?.trim();
 
+  if (!account.canSendActive) {
+    const message =
+      "cannot pull messages before corpSecret is configured; finish callback verification, then configure corpSecret and restart";
+    await updateAccountState(account.accountId, { lastError: message });
+    logger.warn(message);
+    return;
+  }
+
   if (!effectiveOpenKfId) {
     const message = "cannot pull messages without open_kfid";
     await updateAccountState(account.accountId, { lastError: message });
@@ -210,6 +218,10 @@ async function pullAndDispatchMessages(params: {
 }
 
 export async function primeWecomKfCursor(target: WebhookTarget): Promise<void> {
+  if (!target.account.canSendActive) {
+    return;
+  }
+
   const openKfId = target.account.openKfId?.trim();
   if (!openKfId) {
     return;

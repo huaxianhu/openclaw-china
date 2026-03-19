@@ -106,7 +106,7 @@ export function resolveWecomKfAccount(params: {
     accountId,
     name: merged.name?.trim() || undefined,
     enabled,
-    configured: Boolean(corpId && corpSecret && token && encodingAESKey),
+    configured: Boolean(corpId && token && encodingAESKey),
     token,
     encodingAESKey,
     corpId,

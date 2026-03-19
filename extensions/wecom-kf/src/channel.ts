@@ -401,7 +401,13 @@ export const wecomKfPlugin = {
       if (previous) previous();
       unregisterHooks.set(account.accountId, unregister);
 
-      await primeWecomKfCursor(registerTarget);
+      if (account.canSendActive) {
+        await primeWecomKfCursor(registerTarget);
+      } else {
+        ctx.log?.info(
+          `[wecom-kf] account ${account.accountId} missing corpSecret; webhook registered, finish callback verification, then configure corpSecret and restart to enable sync_msg/send_msg`
+        );
+      }
 
       const state = await getAccountState(account.accountId);
       const lastStartAt = Date.now();

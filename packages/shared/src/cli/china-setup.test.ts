@@ -209,16 +209,15 @@ describe("china setup wecom-kf", () => {
     }
   });
 
-  it("stores wecom-kf callback and api credentials", async () => {
+  it("stores only the initial wecom-kf callback setup fields", async () => {
     selectMock.mockResolvedValueOnce("wecom-kf");
     textMock
       .mockResolvedValueOnce("/kf-hook")
       .mockResolvedValueOnce("callback-token")
       .mockResolvedValueOnce("encoding-aes-key")
       .mockResolvedValueOnce("ww-test-corp")
-      .mockResolvedValueOnce("kf-secret")
       .mockResolvedValueOnce("wk-test")
-      .mockResolvedValueOnce("你好，这里是 AI 客服");
+      .mockResolvedValueOnce("");
 
     const { writeConfigFile } = await runSetup({}, ["wecom-kf"]);
 
@@ -231,9 +230,12 @@ describe("china setup wecom-kf", () => {
     expect(wecomKfConfig?.token).toBe("callback-token");
     expect(wecomKfConfig?.encodingAESKey).toBe("encoding-aes-key");
     expect(wecomKfConfig?.corpId).toBe("ww-test-corp");
-    expect(wecomKfConfig?.corpSecret).toBe("kf-secret");
     expect(wecomKfConfig?.openKfId).toBe("wk-test");
-    expect(wecomKfConfig?.welcomeText).toBe("你好，这里是 AI 客服");
+    expect(wecomKfConfig?.corpSecret).toBeUndefined();
+    expect(wecomKfConfig?.apiBaseUrl).toBeUndefined();
+    expect(wecomKfConfig?.welcomeText).toBeUndefined();
+    expect(wecomKfConfig?.dmPolicy).toBeUndefined();
+    expect(wecomKfConfig?.allowFrom).toBeUndefined();
 
     const promptMessages = textMock.mock.calls.map((call) => {
       const firstArg = call[0] as { message?: string } | undefined;
@@ -244,10 +246,26 @@ describe("china setup wecom-kf", () => {
       "微信客服回调 Token",
       "微信客服回调 EncodingAESKey",
       "corpId",
-      "微信客服 Secret",
       "open_kfid",
-      "欢迎语（可选）",
+      "微信客服 Secret（最后填写；首次接入可先留空）",
     ]);
+
+    const noteMessages = noteMock.mock.calls.map((call) => {
+      const firstArg = call[0] as string | undefined;
+      return firstArg ?? "";
+    });
+    expect(
+      noteMessages.some((message) =>
+        message.includes(
+          "配置文档：https://github.com/BytePioneer-AI/openclaw-china/tree/main/doc/guides/wecom-kf/configuration.md"
+        )
+      )
+    ).toBe(true);
+    expect(
+      noteMessages.some((message) =>
+        message.includes("corpSecret 会作为最后一个参数询问；首次接入可先留空，待回调 URL 校验通过并点击“开始使用”后再补")
+      )
+    ).toBe(true);
   });
 });
 

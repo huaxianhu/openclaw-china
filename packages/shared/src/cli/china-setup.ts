@@ -93,7 +93,7 @@ const CHANNEL_GUIDE_LINKS: Record<ChannelId, string> = {
   "feishu-china": "https://github.com/BytePioneer-AI/openclaw-china/blob/main/README.md",
   wecom: `${GUIDES_BASE}/wecom/configuration.md`,
   "wecom-app": `${GUIDES_BASE}/wecom-app/configuration.md`,
-  "wecom-kf": "https://github.com/BytePioneer-AI/openclaw-china/blob/main/extensions/wecom-kf/README.md",
+  "wecom-kf": `${GUIDES_BASE}/wecom-kf/configuration.md`,
   qqbot: `${GUIDES_BASE}/qqbot/configuration.md`,
 };
 const CHINA_CLI_STATE_KEY = Symbol.for("@openclaw-china/china-cli-state");
@@ -341,7 +341,6 @@ function isChannelConfigured(cfg: ConfigRoot, channelId: ChannelId): boolean {
     case "wecom-kf":
       return (
         hasNonEmptyString(channelCfg.corpId) &&
-        hasNonEmptyString(channelCfg.corpSecret) &&
         hasNonEmptyString(channelCfg.token) &&
         hasNonEmptyString(channelCfg.encodingAESKey)
       );
@@ -652,6 +651,15 @@ async function configureWecomKf(prompter: SetupPrompter, cfg: ConfigRoot): Promi
   section("配置 WeCom KF（微信客服）");
   showGuideLink("wecom-kf");
   const existing = getChannelConfig(cfg, "wecom-kf");
+  clackNote(
+    [
+      "向导顺序：webhookPath / token / encodingAESKey / corpId / open_kfid / corpSecret",
+      "基础必填：corpId / token / encodingAESKey / open_kfid",
+      "corpSecret 会作为最后一个参数询问；首次接入可先留空，待回调 URL 校验通过并点击“开始使用”后再补",
+      "webhookPath 默认值：/wecom-kf",
+    ].join("\n"),
+    "参数说明"
+  );
 
   const webhookPath = await prompter.askText({
     label: "Webhook 路径（默认 /wecom-kf）",
@@ -673,19 +681,14 @@ async function configureWecomKf(prompter: SetupPrompter, cfg: ConfigRoot): Promi
     defaultValue: toTrimmedString(existing.corpId),
     required: true,
   });
-  const corpSecret = await prompter.askSecret({
-    label: "微信客服 Secret",
-    existingValue: toTrimmedString(existing.corpSecret),
-    required: true,
-  });
   const openKfId = await prompter.askText({
     label: "open_kfid",
     defaultValue: toTrimmedString(existing.openKfId),
     required: true,
   });
-  const welcomeText = await prompter.askText({
-    label: "欢迎语（可选）",
-    defaultValue: toTrimmedString(existing.welcomeText),
+  const corpSecret = await prompter.askSecret({
+    label: "微信客服 Secret（最后填写；首次接入可先留空）",
+    existingValue: toTrimmedString(existing.corpSecret),
     required: false,
   });
 
@@ -694,9 +697,8 @@ async function configureWecomKf(prompter: SetupPrompter, cfg: ConfigRoot): Promi
     token,
     encodingAESKey,
     corpId,
-    corpSecret,
     openKfId,
-    welcomeText: welcomeText || undefined,
+    corpSecret: corpSecret || undefined,
   });
 }
 

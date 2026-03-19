@@ -432,4 +432,28 @@ describe("wecom-kf webhook", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(await getStoredCursor("default:wk-test")).toBe("cursor-prime-2");
   });
+
+  it("skips cursor priming until corpSecret is configured", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await primeWecomKfCursor(
+      createTarget({
+        account: {
+          corpSecret: undefined,
+          canSendActive: false,
+          config: {
+            webhookPath: "/wecom-kf",
+            token,
+            encodingAESKey,
+            corpId,
+            openKfId: "wk-test",
+          },
+        },
+      })
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await getStoredCursor("default:wk-test")).toBeUndefined();
+  });
 });

@@ -28,7 +28,20 @@ export async function probeWecomKfAccount(params: {
       webhookPath: account.config.webhookPath ?? "/wecom-kf",
       hasCursor: state.hasCursor,
       authOk: false,
-      error: "missing corpId/corpSecret/token/encodingAESKey",
+      error: "missing corpId/token/encodingAESKey",
+    };
+  }
+
+  if (!account.canSendActive) {
+    return {
+      channel: "wecom-kf",
+      accountId: account.accountId,
+      configured: true,
+      canSendActive: false,
+      webhookPath: account.config.webhookPath ?? "/wecom-kf",
+      hasCursor: state.hasCursor,
+      authOk: false,
+      error: "corpSecret not configured yet; finish callback verification, then configure corpSecret",
     };
   }
 
