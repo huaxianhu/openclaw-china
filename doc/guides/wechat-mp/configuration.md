@@ -1,10 +1,16 @@
 # 微信公众号（WeChat MP）配置指南
 
+## 使用场景如图
+
+<img src="../../images/wechat1.jpg" width="48%" />
+<img src="../../images/wechat2.jpg" width="48%" />
+
 本文档用于配置 OpenClaw China 的微信公众号渠道（`wechat-mp`）。
 
 > 当前文档只覆盖 **P0 已实现能力**。
 >
 > 已实现：
+>
 > - 单账号配置
 > - `GET` / `POST` 回调接入
 > - `plain / safe / compat` 三种消息模式基础支持
@@ -16,6 +22,7 @@
 > - 主动发送（active outbound）基础 skeleton
 >
 > 暂未完整承诺：
+>
 > - 全量媒体消息收发
 > - OAuth / JS-SDK / 菜单 / 二维码 / 模板消息全量能力
 > - 完整多账号交互式 setup
@@ -41,7 +48,8 @@
    2. 故不建议使用订阅号，可选择 **测试号**（拥有服务号权限）或正式**认证服务号**。
 2. 一台能被公网访问的机器，用于运行 OpenClaw Gateway。
 3. 一个**域名**（或使用内网穿透工具）指向你的机器，以便公众号服务器能访问到你的回调地址。
-  - 注意⚠️：仅支持 80 或者 443 端口。你可能需要购买域名，然后反向代理流量到 openclaw 所在服务器的 18789 端口（默认端口），或者将端口改成 80 端口（注意服务器需要没有软件在占用 80 端口）。
+   > 注意⚠️：仅支持 80 或者 443 端口。你可能需要购买域名，然后反向代理流量到 openclaw 所在服务器的 18789 端口（默认端口），或者将端口改成 80 端口（注意服务器需要没有软件在占用 80 端口）。
+   >
 4. 已安装 OpenClaw。
 5. 已安装 Node.js 与 pnpm（如果你从源码安装插件）。
 
@@ -77,7 +85,7 @@ openclaw china setup
 openclaw config set gateway.bind lan
 ```
 
---- 
+---
 
 ## 三、在公众号后台准备参数
 
@@ -106,12 +114,14 @@ openclaw config set gateway.bind lan
 ### 订阅号/服务号
 
 访问地址：[微信开发者平台](https://developers.weixin.qq.com/platform)
-扫码进入，选择公众号(订阅号)/服务号
+扫码进入，选择公众号(订阅号)/服务号(有**企业认证服务号**就选服务号那栏， 别选到公众号缺少功能)
 
 ![微信订阅号1](../../images/wechat-demo1.png)
 ![微信订阅号2](../../images/wechat-demo2.png)
-1. 先填写 
-  ```bash
+
+1. 先填写
+
+```bash
   openclaw config set channels.wechat-mp.enabled true
   openclaw config set channels.wechat-mp.webhookPath /wechat-mp
   openclaw config set channels.wechat-mp.appId wx1234567890abcdef
@@ -119,38 +129,46 @@ openclaw config set gateway.bind lan
   openclaw config set channels.wechat-mp.messageMode plain
   openclaw config set channels.wechat-mp.replyMode passive
   openclaw config set gateway.controlUi.allowedOrigins --json '["https://your.domain.com"]'
-  ```
+```
+
   注意⚠️：域名必须指向运行 OpenClaw Gateway 的服务器端口，并且需要配置 `gateway.controlUi.allowedOrigins` 以允许 Control UI 从公众号后台访问。
 
 2. 启动gateway
-  ```bash
+
+```bash
   openclaw gateway --port 18789 --verbose
-  ```
+```
 
 3. 在公众号后台填写服务器配置
-  - URL：`https://your.domain.com:18789/wechat-mp`
-  - Token：与你配置里的 `channels.wechat-mp.token` 一致
-  - EncodingAESKey：与你配置里的 `channels.wechat-mp.encodingAESKey` 一致（safe/compat 时)
-  - 消息加解密方式：选择 `明文模式`（plain）或 `安全模式`（safe）
-  - 点击提交，完成验证
-  - 如果验证失败，检查日志中的错误信息，确认公网地址和端口配置正确，并且网关正在运行。
-  - 扫码体验二维码，关注公众号。
-  > ![扫码登录](../../images/wechat-demo4.png)
-  - 验证成功后，向公众号发送一条文本消息，确认能收到回复。
-  - 如果replyMode passive，确认回复消息在5秒内返回；（订阅号必须 passive）
-  - 如果replyMode active，确认回复消息通过客服消息接口发送成功。（服务号推荐 active）
 
+- URL：`https://your.domain.com:18789/wechat-mp`
+- Token：与你配置里的 `channels.wechat-mp.token` 一致
+- EncodingAESKey：与你配置里的 `channels.wechat-mp.encodingAESKey` 一致（safe/compat 时)
+- 消息加解密方式：选择 `明文模式`（plain）或 `安全模式`（safe）
+- 点击提交，完成验证
+- 如果验证失败，检查日志中的错误信息，确认公网地址和端口配置正确，并且网关正在运行。
+- 扫码体验二维码，关注公众号。
 
+- 验证成功后，向公众号发送一条文本消息，确认能收到回复。
+- 如果replyMode passive，确认回复消息在5秒内返回；（订阅号必须 passive）
+- 如果replyMode active，确认回复消息通过客服消息接口发送成功。（服务号推荐 active）
+  > ```bash
+  > openclaw config set channels.wechat-mp.replyMode active
+  > ```
+  >
 
 ### 测试号
 
 访问地址：[微信公众平台接口测试帐号申请](https://mp.weixin.qq.com/debug/cgi-bin/sandbox?t=sandbox/login)
+
 > 无需公众帐号、快速申请接口测试号；直接体验和测试公众平台所有高级接口
 
 ![微信测试号](../../images/wechat-demo3.png)
+
 1. 扫码登录
 2. 填写
-  ```bash
+
+```bash
   openclaw config set channels.wechat-mp.enabled true
   openclaw config set channels.wechat-mp.webhookPath /wechat-mp
   openclaw config set channels.wechat-mp.appId wx1234567890abcdef
@@ -158,17 +176,22 @@ openclaw config set gateway.bind lan
   openclaw config set channels.wechat-mp.messageMode plain
   openclaw config set channels.wechat-mp.replyMode active
   openclaw config set gateway.controlUi.allowedOrigins --json '["https://your.domain.com"]'
-  ```
+```
+
 3. 启动gateway
-  ```bash
+
+```bash
   openclaw gateway --port 18789 --verbose
-  ```
+```
+
 4. 在测试号后台填写服务器配置
-  - URL：`https://your.domain.com/wechat-mp`
-  - Token：与你配置里的 `channels.wechat-mp.token` 一致
-  - 提交
+
+- URL：`https://your.domain.com/wechat-mp`
+- Token：与你配置里的 `channels.wechat-mp.token` 一致
+- 提交
+
 5. 扫码关注测试号，向公众号发送一条文本消息，确认能收到回复。
-   
+
 ---
 
 ## 四、推荐配置方式：`openclaw china setup`
@@ -191,7 +214,7 @@ openclaw china setup
 - `token`
 - `messageMode`
 - `encodingAESKey`（`safe / compat` 必填, `plain`(明文模式)不需要）
-- `replyMode` (订阅号填`passive`, 服务号选 `active`)
+- `replyMode` (订阅号填 `passive`, 服务号选 `active`)
 - `welcomeText`
 
 > 当前 setup 以 **default account** 为主。
@@ -257,21 +280,21 @@ openclaw config set channels.wechat-mp.welcomeText "你好，欢迎关注。"
 
 ## 六、配置字段说明
 
-| 字段 | 是否必需 | 说明 |
-|------|----------|------|
-| `enabled` | 建议 | 启用渠道 |
-| `webhookPath` | 建议 | 回调路径，默认 `/wechat-mp` |
-| `appId` | 是 | 公众号 AppID |
-| `appSecret` | 条件必需 | 主动发送能力需要；只做被动回复时可暂不配置 |
-| `token` | 是 | 回调验签 token |
+| 字段               | 是否必需 | 说明                                             |
+| ------------------ | -------- | ------------------------------------------------ |
+| `enabled`        | 建议     | 启用渠道                                         |
+| `webhookPath`    | 建议     | 回调路径，默认 `/wechat-mp`                    |
+| `appId`          | 是       | 公众号 AppID                                     |
+| `appSecret`      | 条件必需 | 主动发送能力需要；只做被动回复时可暂不配置       |
+| `token`          | 是       | 回调验签 token                                   |
 | `encodingAESKey` | 条件必需 | `safe / compat` 模式必需；`plain` 模式可省略 |
-| `messageMode` | 建议 | `plain` / `safe` / `compat` |
-| `replyMode` | 建议 | `passive` / `active` |
-| `welcomeText` | 否 | 欢迎语 / 默认提示文案 |
-| `dmPolicy` | 否 | `open / pairing / allowlist / disabled` |
-| `allowFrom` | 否 | allowlist 模式下允许的发送者列表 |
-| `defaultAccount` | 否 | 多账号 schema 预留 |
-| `accounts` | 否 | 多账号 schema 预留 |
+| `messageMode`    | 建议     | `plain` / `safe` / `compat`                |
+| `replyMode`      | 建议     | `passive` / `active`                         |
+| `welcomeText`    | 否       | 欢迎语 / 默认提示文案                            |
+| `dmPolicy`       | 否       | `open / pairing / allowlist / disabled`        |
+| `allowFrom`      | 否       | allowlist 模式下允许的发送者列表                 |
+| `defaultAccount` | 否       | 多账号 schema 预留                               |
+| `accounts`       | 否       | 多账号 schema 预留                               |
 
 ---
 
@@ -314,7 +337,6 @@ openclaw config set channels.wechat-mp.welcomeText "你好，欢迎关注。"
 - 当前已提供 **stable skeleton surface**
 - 依赖 `appSecret`
 - 更适合后续扩展定时任务、主动通知、运营消息等场景
-
 
 ---
 
