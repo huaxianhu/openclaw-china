@@ -9,6 +9,107 @@
  * - false: Minimal passthrough, preserving original text
  */
 
+/** WeChat MP text message byte limit (2048 bytes) */
+export const WECHAT_TEXT_BYTE_LIMIT = 2048;
+
+/**
+ * Calculate UTF-8 byte length of a string.
+ * @param str - The string to measure
+ * @returns The byte length in UTF-8 encoding
+ */
+export function getUtf8ByteLength(str: string): number {
+  return Buffer.byteLength(str, "utf-8");
+}
+
+/**
+ * Split text by byte limit, respecting boundaries (paragraphs, sentences, spaces).
+ * Ensures no multi-byte characters are truncated.
+ *
+ * @param text - The text to split
+ * @param maxBytes - Maximum bytes per chunk (default: WECHAT_TEXT_BYTE_LIMIT)
+ * @returns Array of text chunks, each within the byte limit
+ */
+export function splitTextByByteLimit(
+  text: string,
+  maxBytes: number = WECHAT_TEXT_BYTE_LIMIT
+): string[] {
+  if (getUtf8ByteLength(text) <= maxBytes) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    // Find the maximum character length that fits within maxBytes
+    let end = remaining.length;
+    while (end > 0 && getUtf8ByteLength(remaining.slice(0, end)) > maxBytes) {
+      end--;
+    }
+
+    if (end === 0) {
+      // Single character exceeds limit (should not happen with 2048 bytes)
+      // Force take at least 1 character to avoid infinite loop
+      end = 1;
+    }
+
+    // Try to find a good boundary (paragraph > sentence > space)
+    const boundary = findBestBoundary(remaining, end);
+    if (boundary > 0) {
+      end = boundary;
+    }
+
+    const chunk = remaining.slice(0, end).trim();
+    if (chunk) {
+      chunks.push(chunk);
+    }
+    remaining = remaining.slice(end).trim();
+  }
+
+  return chunks;
+}
+
+/**
+ * Find the best boundary position for splitting text.
+ * Prioritizes: paragraphs > horizontal rules > sentences > spaces.
+ *
+ * @param text - The text to search
+ * @param maxPos - Maximum position to consider
+ * @returns Best boundary position, or 0 if none found
+ */
+function findBestBoundary(text: string, maxPos: number): number {
+  const searchRegion = text.slice(0, maxPos);
+
+  // Priority: paragraph > horizontal rule > sentence > space
+  // Each tuple: [pattern, include pattern in chunk]
+  const boundaries: Array<[string, boolean]> = [
+    ["\n\n", true],
+    ["\n------------\n", true], // Converted markdown horizontal rule
+    ["\n---\n", true], // Markdown horizontal rule
+    ["\n***\n", true],
+    ["\n___\n", true],
+    ["\n", true],
+    ["。", true],
+    ["！", true],
+    ["？", true],
+    ["。 ", true],
+    ["! ", true],
+    ["? ", true],
+    [". ", true],
+    [" ", false],
+  ];
+
+  for (const [boundary, include] of boundaries) {
+    const pos = searchRegion.lastIndexOf(boundary);
+    // Ensure split point is not too early (at least 30% of maxPos)
+    if (pos > maxPos * 0.3) {
+      return include ? pos + boundary.length : pos;
+    }
+  }
+
+  return 0; // No suitable boundary found
+}
+
 /**
  * Normalize text for WeChat MP delivery.
  *
